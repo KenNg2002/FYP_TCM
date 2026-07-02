@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "689825329356",
+    "project_id": "tcm-db-2e5b3",
+    "storage_bucket": "tcm-db-2e5b3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:689825329356:android:b2913131c4932b11b69269",
+        "android_client_info": {
+          "package_name": "my.edu.tarumt.tcm_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCi9tnuMROsnPnNWb73lIH2vUulK6L7BEM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
