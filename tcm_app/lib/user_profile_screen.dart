@@ -21,7 +21,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   String _email = "Loading...";
   String _phoneNo = "";
   String _dob = "";
-  
+  String? _photoURL;
+
   bool _isLoading = true;
 
   @override
@@ -46,6 +47,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             _email = userData['userEmail'] ?? currentUser.email ?? "";
             _phoneNo = userData['userPhoneNum'] ?? "";
             _dob = custData['dateOfBirth'] ?? "";
+            _photoURL = userData['photoURL'];
             _isLoading = false;
           });
         }
@@ -114,7 +116,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   decoration: BoxDecoration(color: primaryGreen, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30))),
                   child: Column(
                     children: [
-                      CircleAvatar(radius: 50, backgroundColor: Colors.white, child: Icon(Icons.person, size: 50, color: Colors.grey[500])),
+                      CircleAvatar(
+                        radius: 50,
+                        backgroundColor: Colors.white,
+                        backgroundImage: (_photoURL != null && _photoURL!.isNotEmpty) ? NetworkImage(_photoURL!) : null,
+                        child: (_photoURL == null || _photoURL!.isEmpty) ? Icon(Icons.person, size: 50, color: Colors.grey[500]) : null,
+                      ),
                       const SizedBox(height: 16),
                       Text(_fullName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
                       Text(_email, style: const TextStyle(fontSize: 14, color: Colors.white70)),
@@ -132,7 +139,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       _buildProfileMenu(Icons.person_outline, "Edit Profile", "Update your personal details", onTap: () async {
                         final bool? isUpdated = await Navigator.push(context, MaterialPageRoute(
                           builder: (context) => EditProfileScreen(
-                            currentName: _fullName, currentPhone: _phoneNo, currentEmail: _email, currentDob: _dob,
+                            currentName: _fullName, currentPhone: _phoneNo, currentEmail: _email, currentDob: _dob, currentPhotoURL: _photoURL,
                           ),
                         ));
                         if (isUpdated == true) { setState(() => _isLoading = true); _fetchUserData(); }

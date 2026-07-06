@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart'; // 确保你有这个文件，用于退出登录跳转
+import 'delivery_edit_profile_screen.dart';
 
 class DeliveryProfileScreen extends StatefulWidget {
   @override
@@ -22,6 +23,7 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
   // DeliveryMan 表的数据
   String _drivingLicense = "Loading...";
   String _vehiclePlateNum = "Loading...";
+  String? _photoURL;
 
   @override
   void initState() {
@@ -48,7 +50,8 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
             // 解析 DeliveryMan 表
             _drivingLicense = deliveryDoc.data()?['drivingLicense'] ?? "No License Record";
             _vehiclePlateNum = deliveryDoc.data()?['vehiclePlateNum'] ?? "No Vehicle Record";
-            
+            _photoURL = userDoc.data()?['photoURL'];
+
             // 生成一个短 ID 用于 UI 显示
             _riderId = currentUser.uid.length >= 8 ? currentUser.uid.substring(0, 8).toUpperCase() : "00000000"; 
           });
@@ -94,7 +97,12 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
               ),
               child: Column(
                 children: [
-                  const CircleAvatar(radius: 50, backgroundColor: Colors.white, child: Icon(Icons.motorcycle, size: 50, color: Colors.grey)),
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: Colors.white,
+                    backgroundImage: (_photoURL != null && _photoURL!.isNotEmpty) ? NetworkImage(_photoURL!) : null,
+                    child: (_photoURL == null || _photoURL!.isEmpty) ? const Icon(Icons.motorcycle, size: 50, color: Colors.grey) : null,
+                  ),
                   const SizedBox(height: 16),
                   Text(_riderName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
                   const SizedBox(height: 4),
@@ -129,13 +137,40 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                 children: [
                   const Text("Account Information", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF4B5563))),
                   const SizedBox(height: 12),
-                  
+
                   // 👉 完美插入你的四个数据库字段
                   _buildProfileMenu(Icons.email_rounded, "Email Address", _userEmail),
                   _buildProfileMenu(Icons.phone_android_rounded, "Phone Number", _userPhoneNum),
                   _buildProfileMenu(Icons.badge_rounded, "Driving License", _drivingLicense),
                   _buildProfileMenu(Icons.motorcycle_rounded, "Vehicle Plate", _vehiclePlateNum),
-                  
+
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        final bool? isUpdated = await Navigator.push(context, MaterialPageRoute(
+                          builder: (context) => DeliveryEditProfileScreen(
+                            currentName: _riderName,
+                            currentPhone: _userPhoneNum,
+                            currentEmail: _userEmail,
+                            currentVehiclePlateNum: _vehiclePlateNum,
+                            currentDrivingLicense: _drivingLicense,
+                            currentPhotoURL: _photoURL,
+                          ),
+                        ));
+                        if (isUpdated == true) _fetchProfileData();
+                      },
+                      icon: Icon(Icons.edit_rounded, color: primaryGreen),
+                      label: Text("Edit Profile", style: TextStyle(color: primaryGreen, fontSize: 16, fontWeight: FontWeight.bold)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        side: BorderSide(color: primaryGreen, width: 2),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      ),
+                    ),
+                  ),
+
                   const SizedBox(height: 30),
                   
                   // 退出登录按钮

@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http; // ⚠️ 引入网络请求库
 import 'dart:convert';
+import 'address_utils.dart';
+import 'ipaddress.dart';
+import 'notification_service.dart';
 
 class CheckoutPaymentScreen extends StatefulWidget {
   final String cartId;
@@ -25,10 +28,11 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
   Map<String, dynamic>? _selectedAddress;
 
   List<Map<String, dynamic>> _savedPaymentMethods = [];
-  String _selectedPaymentId = 'COD'; 
+  String? _selectedPaymentId;
+  bool _showPaymentError = false;
   
-  final String _deliveryMethod = 'Same-Day Delivery';
-  final double _deliveryFee = 10.00; 
+  String _deliveryMethod = 'Same-Day Delivery';
+  double get _deliveryFee => _deliveryMethod == 'Self Pickup' ? 0.0 : 5.00;
 
   List<QueryDocumentSnapshot> _checkoutItems = [];
 
@@ -55,7 +59,6 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
 
         if (paymentQuery.docs.isNotEmpty) {
           _savedPaymentMethods = paymentQuery.docs.map((d) => {'id': d.id, ...d.data()}).toList();
-          _selectedPaymentId = _savedPaymentMethods.first['pId'] ?? 'COD';
         }
 
         _checkoutItems = itemsQuery.docs;
@@ -67,18 +70,22 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
     }
   }
 
-  Future<void> _addNewAddress(String address, String name, String phone) async {
+  Future<void> _addNewAddress(String name, String phone, String addressLine1, String addressLine2, String city, String postcode, String state) async {
     User? currentUser = FirebaseAuth.instance.currentUser;
     String customerId = currentUser?.uid ?? "TEST_CUSTOMER_001";
     DocumentReference newAddrRef = FirebaseFirestore.instance.collection('shippingaddress').doc();
-    
+
     Map<String, dynamic> newAddrData = {
       'sId': newAddrRef.id,
       'customerID': customerId,
-      'fullAddress': address,
       'receiverName': name,
       'phoneNo': phone,
-      'label': 'Home', 
+      'addressLine1': addressLine1,
+      'addressLine2': addressLine2,
+      'city': city,
+      'postcode': postcode,
+      'state': state,
+      'label': 'Home',
     };
 
     await newAddrRef.set(newAddrData); 
@@ -92,8 +99,14 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
 
   // 🚀 终极绝招：真正的一键无感扣款 (One-click Checkout)
   Future<void> _handleStripePayment() async {
-    if (_selectedAddress == null) {
+    if (_deliveryMethod != 'Self Pickup' && _selectedAddress == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a delivery address.'), backgroundColor: Colors.red));
+      return;
+    }
+
+    if (_selectedPaymentId == null) {
+      setState(() => _showPaymentError = true);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a payment method.'), backgroundColor: Colors.red));
       return;
     }
 
@@ -117,8 +130,9 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       int amountInCents = (finalTotalAmount * 100).toInt();
 
       // 3. 呼叫 Node.js 大脑：命令它直接使用这个代币扣款！不再跳网页！
-      // final url = Uri.parse('http://10.0.2.2:3000/charge-card');
-      final url = Uri.parse('http://localhost:3000/charge-card');
+      // final url = Uri.parse('http://10.0.2.2:$serverPort/charge-card'); // Android emulator
+      // final url = Uri.parse('http://localhost:$serverPort/charge-card'); // Chrome/web testing
+      final url = Uri.parse('$serverBaseUrl/charge-card'); // Physical device (see ipaddress.dart)
       
       final response = await http.post(
         url,
@@ -135,7 +149,8 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       // 4. 判断 Node.js 大脑传回的扣款结果
       if (jsonResponse['success'] == true) {
         // Stripe 已经扣钱了，立刻存入 Firebase 产生订单
-        await _createOrderInFirebase();
+        // 保存 paymentIntentId：以后取消/退款要靠它去呼叫 Stripe 真正退钱
+        await _createOrderInFirebase(stripePaymentIntentId: jsonResponse['paymentIntentId']);
       } else {
         throw Exception(jsonResponse['error']);
       }
@@ -148,7 +163,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
     }
   }
 
-  Future<void> _createOrderInFirebase() async {
+  Future<void> _createOrderInFirebase({String? stripePaymentIntentId}) async {
     try {
       User? currentUser = FirebaseAuth.instance.currentUser;
       String customerId = currentUser?.uid ?? "TEST_CUSTOMER_001";
@@ -156,7 +171,9 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       WriteBatch batch = FirebaseFirestore.instance.batch();
       DocumentReference orderRef = FirebaseFirestore.instance.collection('Order').doc();
 
-      String fullShippingAddress = "${_selectedAddress!['receiverName']} (${_selectedAddress!['phoneNo']})\n${_selectedAddress!['fullAddress']}";
+      String fullShippingAddress = _deliveryMethod == 'Self Pickup'
+          ? 'Self Pickup at TCM Clinic HQ'
+          : "${_selectedAddress!['receiverName']} (${_selectedAddress!['phoneNo']})\n${formatAddress(_selectedAddress!)}";
       double finalTotalAmount = widget.totalAmount + _deliveryFee;
 
       batch.set(orderRef, {
@@ -167,9 +184,10 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
         'totalAmount': finalTotalAmount,
         'deliveryMethod': _deliveryMethod,
         'shippingAddress': fullShippingAddress,
-        'orderStatus': 'Pending', 
+        'orderStatus': 'Pending',
         'customerID': customerId,
         'paymentMethodId': _selectedPaymentId,
+        'stripePaymentIntentId': stripePaymentIntentId,
       });
 
       for (var item in _checkoutItems) {
@@ -187,6 +205,14 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       });
 
       await batch.commit();
+
+      NotificationService.instance.send(
+        role: 'Admin',
+        title: 'New Order Received',
+        body: 'Order ${orderRef.id} — RM ${finalTotalAmount.toStringAsFixed(2)} ($_deliveryMethod)',
+        data: {'orderId': orderRef.id},
+      );
+
       _showSuccessDialog(orderRef.id);
 
     } catch (e) {
@@ -243,7 +269,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
                     return ListTile(
                       leading: Icon(Icons.location_on, color: isSelected ? primaryGreen : Colors.grey[400]),
                       title: Text("${addr['receiverName']} | ${addr['phoneNo']}", style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-                      subtitle: Text(addr['fullAddress'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(formatAddress(addr), maxLines: 2, overflow: TextOverflow.ellipsis),
                       trailing: isSelected ? Icon(Icons.check_circle, color: primaryGreen) : null,
                       onTap: () { setState(() => _selectedAddress = addr); Navigator.pop(context); },
                     );
@@ -269,9 +295,13 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
   }
 
   void _showAddNewAddressDialog() {
-    TextEditingController addressCtrl = TextEditingController();
     TextEditingController nameCtrl = TextEditingController();
     TextEditingController phoneCtrl = TextEditingController();
+    TextEditingController line1Ctrl = TextEditingController();
+    TextEditingController line2Ctrl = TextEditingController();
+    TextEditingController cityCtrl = TextEditingController();
+    TextEditingController postcodeCtrl = TextEditingController();
+    TextEditingController stateCtrl = TextEditingController();
 
     showDialog(
       context: context,
@@ -282,9 +312,21 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Receiver Name")),
-              TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: "Phone Number")),
+              TextField(controller: phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "Phone Number")),
               const SizedBox(height: 10),
-              TextField(controller: addressCtrl, maxLines: 3, decoration: const InputDecoration(hintText: "Full Address...", border: OutlineInputBorder())),
+              TextField(controller: line1Ctrl, decoration: const InputDecoration(labelText: "Address Line 1", hintText: "House no., street name")),
+              const SizedBox(height: 10),
+              TextField(controller: line2Ctrl, decoration: const InputDecoration(labelText: "Address Line 2 (Optional)", hintText: "Unit, floor, building")),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(child: TextField(controller: postcodeCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Postcode"))),
+                  const SizedBox(width: 10),
+                  Expanded(flex: 2, child: TextField(controller: cityCtrl, decoration: const InputDecoration(labelText: "City"))),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(controller: stateCtrl, decoration: const InputDecoration(labelText: "State")),
             ],
           ),
         ),
@@ -292,7 +334,18 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: primaryGreen),
-            onPressed: () { _addNewAddress(addressCtrl.text.trim(), nameCtrl.text.trim(), phoneCtrl.text.trim()); Navigator.pop(context); },
+            onPressed: () {
+              _addNewAddress(
+                nameCtrl.text.trim(),
+                phoneCtrl.text.trim(),
+                line1Ctrl.text.trim(),
+                line2Ctrl.text.trim(),
+                cityCtrl.text.trim(),
+                postcodeCtrl.text.trim(),
+                stateCtrl.text.trim(),
+              );
+              Navigator.pop(context);
+            },
             child: const Text("Save", style: TextStyle(color: Colors.white)),
           )
         ],
@@ -318,38 +371,60 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: _showAddressSelector,
-                  child: Container(
+                if (_deliveryMethod == 'Self Pickup')
+                  Container(
                     margin: const EdgeInsets.all(16), padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: _selectedAddress == null ? Colors.red.shade200 : Colors.transparent), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
                     child: Row(
                       children: [
-                        Icon(Icons.location_on, color: primaryGreen, size: 30),
+                        Icon(Icons.storefront_rounded, color: primaryGreen, size: 30),
                         const SizedBox(width: 16),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text("Delivery Address", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                              const Text("Pickup Location", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
                               const SizedBox(height: 6),
-                              _selectedAddress == null 
-                                ? const Text("Tap to select or add address", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
-                                : Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text("${_selectedAddress!['receiverName']} | ${_selectedAddress!['phoneNo']}", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                                      Text(_selectedAddress!['fullAddress'], style: const TextStyle(fontSize: 13, color: Color(0xFF1F2937))),
-                                    ],
-                                  ),
+                              const Text("TCM Clinic HQ", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
-                        const Icon(Icons.chevron_right, color: Colors.grey),
                       ],
                     ),
+                  )
+                else
+                  GestureDetector(
+                    onTap: _showAddressSelector,
+                    child: Container(
+                      margin: const EdgeInsets.all(16), padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: _selectedAddress == null ? Colors.red.shade200 : Colors.transparent), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
+                      child: Row(
+                        children: [
+                          Icon(Icons.location_on, color: primaryGreen, size: 30),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text("Delivery Address", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                                const SizedBox(height: 6),
+                                _selectedAddress == null
+                                  ? const Text("Tap to select or add address", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))
+                                  : Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text("${_selectedAddress!['receiverName']} | ${_selectedAddress!['phoneNo']}", style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                        Text(formatAddress(_selectedAddress!), style: const TextStyle(fontSize: 13, color: Color(0xFF1F2937))),
+                                      ],
+                                    ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right, color: Colors.grey),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
 
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -379,29 +454,11 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
                 const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: primaryGreen.withOpacity(0.05),
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: primaryGreen, width: 2),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.electric_moped, color: primaryGreen, size: 28),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_deliveryMethod, style: TextStyle(fontWeight: FontWeight.bold, color: primaryGreen)),
-                              Text("Delivered today by our rider", style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                            ],
-                          ),
-                        ),
-                        Text("RM ${_deliveryFee.toStringAsFixed(2)}", style: TextStyle(fontWeight: FontWeight.bold, color: primaryGreen)),
-                      ],
-                    ),
+                  child: Column(
+                    children: [
+                      _buildDeliveryOption(Icons.electric_moped, "Same-Day Delivery", "Delivered today by our rider", "Same-Day Delivery", 5.00),
+                      _buildDeliveryOption(Icons.storefront_rounded, "Self Pickup", "Pick up at TCM Clinic HQ", "Self Pickup", 0.0),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -410,6 +467,11 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
                   padding: EdgeInsets.symmetric(horizontal: 20),
                   child: Text("Payment Method", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1F2937))),
                 ),
+                if (_showPaymentError)
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
+                    child: Text("Please select a payment method", style: TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
                 const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -480,10 +542,37 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
     );
   }
 
+  Widget _buildDeliveryOption(IconData icon, String title, String subtitle, String methodId, double fee) {
+    bool isSelected = _deliveryMethod == methodId;
+    return GestureDetector(
+      onTap: () => setState(() => _deliveryMethod = methodId),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: isSelected ? primaryGreen.withOpacity(0.05) : Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: isSelected ? primaryGreen : Colors.grey[200]!, width: isSelected ? 2 : 1)),
+        child: Row(
+          children: [
+            Icon(icon, color: isSelected ? primaryGreen : Colors.grey[400], size: 28),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: isSelected ? primaryGreen : const Color(0xFF1F2937))),
+                  Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+                ],
+              ),
+            ),
+            Text(fee == 0.0 ? "Free" : "RM ${fee.toStringAsFixed(2)}", style: TextStyle(fontWeight: FontWeight.bold, color: isSelected ? primaryGreen : Colors.grey[500])),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildPaymentOption(IconData icon, String title, String subtitle, String paymentId) {
     bool isSelected = _selectedPaymentId == paymentId;
     return GestureDetector(
-      onTap: () => setState(() => _selectedPaymentId = paymentId),
+      onTap: () => setState(() { _selectedPaymentId = paymentId; _showPaymentError = false; }),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(color: isSelected ? primaryGreen.withOpacity(0.05) : Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: isSelected ? primaryGreen : Colors.grey[200]!, width: isSelected ? 2 : 1)),

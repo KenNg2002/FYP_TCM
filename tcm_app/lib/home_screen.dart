@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-// import 'ai_scanner_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'ai_scanner_screen.dart';
 import 'herbal_store_screen.dart';
-// import 'my_appointment_screen.dart';
-// import 'my_order_screen.dart';
+import 'my_appointment_screen.dart';
+import 'my_order_screen.dart';
 import 'user_profile_screen.dart';
 import 'doctor_list_screen.dart';
 
@@ -20,18 +22,30 @@ class _HomeScreenState extends State<HomeScreen> {
   final Color primaryGreen = const Color(0xFF2E7D32);
   final Color bgGray = const Color(0xFFF4F6F8);
 
-  // Define the matrix of pages for bottom navigation
-  late List<Widget> _pages;
+  String _userName = "Guest";
+  String? _photoURL;
 
   @override
   void initState() {
     super.initState();
-    _pages = [
-      _buildHomeView(),           // Index 0: Main Dashboard
-      HerbalStoreScreen(), // Index 1: Store (Replace with HerbalStoreScreen())
-      DoctorListScreen(),    // Index 2: Clinic (Replace with DoctorListScreen())
-      UserProfileScreen(),        // Index 3: Profile (Replace with UserProfileScreen())
-    ];
+    _fetchUserData();
+  }
+
+  Future<void> _fetchUserData() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('User').doc(currentUser.uid).get();
+      if (userDoc.exists && mounted) {
+        setState(() {
+          _userName = userDoc.data()?['username'] ?? "Guest";
+          _photoURL = userDoc.data()?['photoURL'];
+        });
+      }
+    } catch (e) {
+      // Keep default greeting if the fetch fails; not critical to block the home view.
+    }
   }
 
   @override
@@ -42,7 +56,12 @@ class _HomeScreenState extends State<HomeScreen> {
         // IndexedStack preserves the state of the pages when switching tabs
         child: IndexedStack(
           index: _currentIndex,
-          children: _pages,
+          children: [
+            _buildHomeView(),        // Index 0: Main Dashboard
+            HerbalStoreScreen(),     // Index 1: Store
+            DoctorListScreen(),      // Index 2: Clinic
+            UserProfileScreen(),     // Index 3: Profile
+          ],
         ),
       ),
       // Modern Bottom Navigation Bar
@@ -73,7 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
             items: const [
               BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: "Home"),
               BottomNavigationBarItem(icon: Icon(Icons.shopping_bag_rounded), label: "Store"),
-              BottomNavigationBarItem(icon: Icon(Icons.local_hospital_rounded), label: "Clinic"),
+              BottomNavigationBarItem(icon: Icon(Icons.local_hospital_rounded), label: "Doctor"),
               BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: "Profile"),
             ],
           ),
@@ -95,24 +114,33 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Hello, Guest", // Later, we will fetch the real name from Firebase
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF212121)),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "How are you feeling today?",
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                  ),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Hello, $_userName",
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF212121)),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "How are you feeling today?",
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
               ),
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: primaryGreen.withOpacity(0.2),
-                child: Icon(Icons.person, color: primaryGreen),
+              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: () => setState(() => _currentIndex = 3),
+                child: CircleAvatar(
+                  radius: 24,
+                  backgroundColor: primaryGreen.withOpacity(0.2),
+                  backgroundImage: (_photoURL != null && _photoURL!.isNotEmpty) ? NetworkImage(_photoURL!) : null,
+                  child: (_photoURL == null || _photoURL!.isEmpty) ? Icon(Icons.person, color: primaryGreen) : null,
+                ),
               )
             ],
           ),
@@ -121,8 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // 2. HERO FEATURE: AI Tongue Scanner Banner
           GestureDetector(
             onTap: () {
-              // Navigate to AI Scanner Screen
-              // Navigator.push(context, MaterialPageRoute(builder: (context) => AIScannerScreen()));
+              Navigator.push(context, MaterialPageRoute(builder: (context) => AIScannerScreen()));
             },
             child: Container(
               padding: const EdgeInsets.all(24),
@@ -185,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.inventory_2_rounded,
                 color: Colors.blueAccent,
                 onTap: () {
-                  // Navigator.push(context, MaterialPageRoute(builder: (context) => MyOrdersScreen()));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => MyOrdersScreen()));
                 },
               ),
               const SizedBox(width: 16),
@@ -194,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: Icons.event_available_rounded,
                 color: Colors.orangeAccent,
                 onTap: () {
-                  // Navigator.push(context, MaterialPageRoute(builder: (context) => MyAppointmentsScreen()));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const MyAppointmentsScreen()));
                 },
               ),
             ],

@@ -2,6 +2,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore"; 
+import { getStorage } from "firebase/storage";
 
 // 这是你专属的真实 Firebase 配置 (从截图提取)
 export const firebaseConfig = {
@@ -22,3 +23,5 @@ export const auth = getAuth(app);
 
 // Initialize Cloud Firestore (后续开发商品和订单管理会用到)
 export const db = getFirestore(app);
+
+export const storage = getStorage(app);

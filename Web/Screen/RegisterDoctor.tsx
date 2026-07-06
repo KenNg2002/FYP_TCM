@@ -3,8 +3,10 @@ import { UserPlus, Mail, Lock, User, Phone, Stethoscope, Loader2, FileText } fro
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
-import { db, firebaseConfig } from '../firebaseConfig';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage, firebaseConfig } from '../firebaseConfig';
 import Toast from './Toast';
+import AvatarUpload from './AvatarUpload';
 
 const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp_Doctor");
 const secondaryAuth = getAuth(secondaryApp);
@@ -13,6 +15,7 @@ const RegisterDoctor: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
 
   // ⚠️ 统一命名：改为 username, userEmail, userPhoneNum
   const [formData, setFormData] = useState({
@@ -38,6 +41,14 @@ const RegisterDoctor: React.FC = () => {
       );
       
       const newDoctorUid = userCredential.user.uid;
+
+      let photoURL: string | null = null;
+      if (photoFile) {
+        const photoRef = ref(storage, `profile_photos/${newDoctorUid}.jpg`);
+        await uploadBytes(photoRef, photoFile);
+        photoURL = await getDownloadURL(photoRef);
+      }
+
       const batch = writeBatch(db);
 
       // ⚠️ 完美对齐你的 User Table 字段！
@@ -51,7 +62,8 @@ const RegisterDoctor: React.FC = () => {
         userPhoneNum: formData.userPhoneNum,
         userRole: 'Admin',
         userRegistedDate: serverTimestamp(),
-        accountStatus: 'Active'
+        accountStatus: 'Active',
+        photoURL
       });
 
       // B. 写入 Administrator 表 (这个保持你 Admin 的专属表设计)
@@ -68,6 +80,7 @@ const RegisterDoctor: React.FC = () => {
 
       setSuccessMsg(`Doctor ${formData.username} has been successfully registered!`);
       setFormData({ username: '', userEmail: '', userPhoneNum: '', password: '', specialty: 'TCM General Practice', description: '' });
+      setPhotoFile(null);
 
     } catch (error: any) {
       console.error("Registration Error:", error);
@@ -93,6 +106,8 @@ const RegisterDoctor: React.FC = () => {
         {errorMsg && <Toast type="error" message={errorMsg} onDismiss={() => setErrorMsg('')} />}
 
         <form onSubmit={handleRegister} className="space-y-6">
+          <AvatarUpload value={photoFile} onChange={setPhotoFile} ringColorClass="ring-blue-200" />
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 统一为 username */}
             <div>

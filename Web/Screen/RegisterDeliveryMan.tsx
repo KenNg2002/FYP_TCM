@@ -3,8 +3,10 @@ import { Bike, Mail, Lock, User, Phone, CreditCard, Loader2, FileText } from 'lu
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
-import { db, firebaseConfig } from '../firebaseConfig';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage, firebaseConfig } from '../firebaseConfig';
 import Toast from './Toast';
+import AvatarUpload from './AvatarUpload';
 
 // 🔥 创建副引擎，专门用于静默注册，防止 Admin 当前账号被踢出
 const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp_Delivery");
@@ -14,6 +16,7 @@ const RegisterDeliveryMan: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
 
   const [formData, setFormData] = useState({
     username: '',
@@ -40,6 +43,14 @@ const RegisterDeliveryMan: React.FC = () => {
       
       const newDeliveryManUid = userCredential.user.uid;
 
+      // 1b. 如有选择照片，先上传到 Firebase Storage
+      let photoURL: string | null = null;
+      if (photoFile) {
+        const photoRef = ref(storage, `profile_photos/${newDeliveryManUid}.jpg`);
+        await uploadBytes(photoRef, photoFile);
+        photoURL = await getDownloadURL(photoRef);
+      }
+
       // 2. 准备 Batch Write (批处理)，同时写入两个 Table
       const batch = writeBatch(db);
 
@@ -50,9 +61,10 @@ const RegisterDeliveryMan: React.FC = () => {
         username: formData.username,
         userEmail: formData.userEmail,
         userPhoneNum: formData.userPhoneNum,
-        userRole: 'DeliveryMan', 
+        userRole: 'DeliveryMan',
         accountStatus: 'Active',
-        userRegistedDate: serverTimestamp()
+        userRegistedDate: serverTimestamp(),
+        photoURL
       });
 
       // B. 写入 DeliveryMan Table
@@ -73,6 +85,7 @@ const RegisterDeliveryMan: React.FC = () => {
       // 4. UI 提示并清空表单
       setSuccessMsg(`Delivery Man ${formData.username} has been successfully registered!`);
       setFormData({ username: '', userEmail: '', password: '', userPhoneNum: '', vehiclePlateNum: '', drivingLicense: '' });
+      setPhotoFile(null);
 
     } catch (error: any) {
       console.error("Registration Error:", error);
@@ -109,7 +122,9 @@ const RegisterDeliveryMan: React.FC = () => {
         {errorMsg && <Toast type="error" message={errorMsg} onDismiss={() => setErrorMsg('')} />}
 
         <form onSubmit={handleRegister} className="space-y-6">
-          
+
+          <AvatarUpload value={photoFile} onChange={setPhotoFile} ringColorClass="ring-orange-200" />
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 全名 */}
             <div>

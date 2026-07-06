@@ -3,8 +3,10 @@ import { ShieldCheck, Mail, Lock, User, Phone, Loader2 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
-import { db, firebaseConfig } from '../firebaseConfig';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage, firebaseConfig } from '../firebaseConfig';
 import Toast from './Toast';
+import AvatarUpload from './AvatarUpload';
 
 const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp_Admin");
 const secondaryAuth = getAuth(secondaryApp);
@@ -13,6 +15,7 @@ const RegisterAdmin: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
 
   // 1. 状态里移除了 department 和 description
   const [formData, setFormData] = useState({
@@ -36,6 +39,14 @@ const RegisterAdmin: React.FC = () => {
       );
       
       const newAdminUid = userCredential.user.uid;
+
+      let photoURL: string | null = null;
+      if (photoFile) {
+        const photoRef = ref(storage, `profile_photos/${newAdminUid}.jpg`);
+        await uploadBytes(photoRef, photoFile);
+        photoURL = await getDownloadURL(photoRef);
+      }
+
       const batch = writeBatch(db);
 
       // A. 写入 User 表
@@ -45,9 +56,10 @@ const RegisterAdmin: React.FC = () => {
         username: formData.username,
         userEmail: formData.userEmail,
         userPhoneNum: formData.userPhoneNum,
-        userRole: 'Admin', 
+        userRole: 'Admin',
         userRegistedDate: serverTimestamp(),
-        accountStatus: 'Active'
+        accountStatus: 'Active',
+        photoURL
       });
 
       // B. 写入 Administrator 表
@@ -65,6 +77,7 @@ const RegisterAdmin: React.FC = () => {
       setSuccessMsg(`Administrator ${formData.username} has been successfully registered!`);
       // 注册成功后清空表单
       setFormData({ username: '', userEmail: '', userPhoneNum: '', password: '' });
+      setPhotoFile(null);
 
     } catch (error: any) {
       console.error("Registration Error:", error);
@@ -90,6 +103,8 @@ const RegisterAdmin: React.FC = () => {
         {errorMsg && <Toast type="error" message={errorMsg} onDismiss={() => setErrorMsg('')} />}
 
         <form onSubmit={handleRegister} className="space-y-6">
+          <AvatarUpload value={photoFile} onChange={setPhotoFile} ringColorClass="ring-purple-200" />
+
           {/* 完美的 2x2 布局排版 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>

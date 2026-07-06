@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, AlertTriangle, CheckCircle, X, Loader2 } from 'lucide-react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebaseConfig'; // 确保路径正确
 
 // 定义数据库的数据结构
@@ -40,28 +40,24 @@ const HerbalProducts: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('All Categories');
 
-  // 组件加载时获取数据
+  // 实时监听商品列表：结账时顾客下单会扣库存 (stockQuantity)，
+  // Admin 这边开着页面也要能马上看到库存变化，不用手动刷新
   useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  // 1. Read: 从 Firebase 读取数据
-  const fetchProducts = async () => {
-    setIsLoading(true);
-    try {
-      const querySnapshot = await getDocs(collection(db, 'HerbalProduct'));
-      const fetchedData = querySnapshot.docs.map(doc => ({
+    const unsubscribe = onSnapshot(collection(db, 'HerbalProduct'), (snapshot) => {
+      const fetchedData = snapshot.docs.map(doc => ({
         productID: doc.id, // 使用 Firebase 自动生成的 Document ID 作为 productID
         ...doc.data()
       })) as Product[];
       setProducts(fetchedData);
-    } catch (error) {
+      setIsLoading(false);
+    }, (error) => {
       console.error("Error fetching products:", error);
       alert("Failed to load products. Please check your connection.");
-    } finally {
       setIsLoading(false);
-    }
-  };
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // 2. Create / Update: 提交表单保存到 Firebase
   const handleSaveProduct = async (e: React.FormEvent) => {
@@ -88,7 +84,7 @@ const HerbalProducts: React.FC = () => {
       }
       
       closeModal();
-      fetchProducts(); // 刷新列表
+      setIsLoading(false);
     } catch (error) {
       console.error("Error saving product:", error);
       alert("Failed to save product.");
@@ -102,7 +98,7 @@ const HerbalProducts: React.FC = () => {
       try {
         setIsLoading(true);
         await deleteDoc(doc(db, 'HerbalProduct', id));
-        fetchProducts();
+        setIsLoading(false);
       } catch (error) {
         console.error("Error deleting product:", error);
         alert("Failed to delete product.");

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http; // ⚠️ 引入网络请求库
 import 'dart:convert';
+import 'ipaddress.dart';
 
 class PaymentMethodScreen extends StatefulWidget {
   const PaymentMethodScreen({super.key});
@@ -70,8 +71,9 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
 
       // 2. 呼叫我们刚才写的 Node.js 绑卡 API
       // ⚠️ 如果你用 Android 模拟器，地址是 10.0.2.2；如果是真机/iOS，填你电脑的局域网 IP
-      // final url = Uri.parse('http://10.0.2.2:3000/save-card');
-      final url = Uri.parse('http://localhost:3000/save-card');
+      // final url = Uri.parse('http://10.0.2.2:$serverPort/save-card'); // Android emulator
+      // final url = Uri.parse('http://localhost:$serverPort/save-card'); // Chrome/web testing
+      final url = Uri.parse('$serverBaseUrl/save-card'); // Physical device (see ipaddress.dart)
       
       final response = await http.post(
         url,
@@ -329,14 +331,17 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text("CARDHOLDER", style: TextStyle(color: Colors.white54, fontSize: 10)),
-                                const SizedBox(height: 4),
-                                Text(card['cardName'], style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                              ],
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text("CARDHOLDER", style: TextStyle(color: Colors.white54, fontSize: 10)),
+                                  const SizedBox(height: 4),
+                                  Text(card['cardName'], overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
                             ),
+                            const SizedBox(width: 12),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -345,6 +350,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
                                 Text(card['expiryDate'], style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                               ],
                             ),
+                            const SizedBox(width: 12),
                             GestureDetector(
                               onTap: () => _deleteCard(card['pId']),
                               child: Container(

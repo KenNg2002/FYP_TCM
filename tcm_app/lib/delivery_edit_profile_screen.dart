@@ -5,32 +5,35 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
-class EditProfileScreen extends StatefulWidget {
+class DeliveryEditProfileScreen extends StatefulWidget {
   final String currentName;
   final String currentPhone;
   final String currentEmail;
-  final String currentDob;
+  final String currentVehiclePlateNum;
+  final String currentDrivingLicense;
   final String? currentPhotoURL;
 
-  const EditProfileScreen({
+  const DeliveryEditProfileScreen({
     super.key,
     required this.currentName,
     required this.currentPhone,
     required this.currentEmail,
-    required this.currentDob,
+    required this.currentVehiclePlateNum,
+    required this.currentDrivingLicense,
     this.currentPhotoURL,
   });
 
   @override
-  State<EditProfileScreen> createState() => _EditProfileScreenState();
+  State<DeliveryEditProfileScreen> createState() => _DeliveryEditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _DeliveryEditProfileScreenState extends State<DeliveryEditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  
+
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
-  late TextEditingController _dobController;
+  late TextEditingController _vehiclePlateController;
+  late TextEditingController _drivingLicenseController;
 
   bool _isLoading = false;
   File? _pickedImage;
@@ -43,41 +46,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.initState();
     _nameController = TextEditingController(text: widget.currentName);
     _phoneController = TextEditingController(text: widget.currentPhone);
-    _dobController = TextEditingController(text: widget.currentDob);
-  }
-
-  Future<void> _pickImage() async {
-    final XFile? picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
-    if (picked != null) {
-      setState(() => _pickedImage = File(picked.path));
-    }
+    _vehiclePlateController = TextEditingController(text: widget.currentVehiclePlateNum);
+    _drivingLicenseController = TextEditingController(text: widget.currentDrivingLicense);
   }
 
   @override
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    _dobController.dispose();
+    _vehiclePlateController.dispose();
+    _drivingLicenseController.dispose();
     super.dispose();
   }
 
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now().subtract(const Duration(days: 365 * 20)),
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: primaryGreen)),
-          child: child!,
-        );
-      },
-    );
+  Future<void> _pickImage() async {
+    final XFile? picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
     if (picked != null) {
-      setState(() {
-        _dobController.text = "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
-      });
+      setState(() => _pickedImage = File(picked.path));
     }
   }
 
@@ -88,7 +73,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       String uid = FirebaseAuth.instance.currentUser!.uid;
 
-      // 0. 如有选择新照片，先上传到 Firebase Storage
       String? photoURL = widget.currentPhotoURL;
       if (_pickedImage != null) {
         final storageRef = FirebaseStorage.instance.ref().child('profile_photos/$uid.jpg');
@@ -96,27 +80,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         photoURL = await storageRef.getDownloadURL();
       }
 
-      // 1. Update basic fields in 'User' document (修复：完全对齐 ER 数据库图里的命名)
-      await FirebaseFirestore.instance.collection('User').doc(uid).update({
-        'username': _nameController.text.trim(),       // 之前这里错写成了 fullName
-        'userPhoneNum': _phoneController.text.trim(),  // 之前这里错写成了 phoneNo
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      batch.update(FirebaseFirestore.instance.collection('User').doc(uid), {
+        'username': _nameController.text.trim(),
+        'userPhoneNum': _phoneController.text.trim(),
         'photoURL': photoURL,
       });
-
-      // 2. Update specific fields in 'Customer' document
-      await FirebaseFirestore.instance.collection('Customer').doc(uid).set({
-        'customerID': uid, // 确保与你截图里的 CustomerID / customerID 大小写一致
-        'dateOfBirth': _dobController.text.trim(),
-      }, SetOptions(merge: true));
+      batch.update(FirebaseFirestore.instance.collection('DeliveryMan').doc(uid), {
+        'vehiclePlateNum': _vehiclePlateController.text.trim().toUpperCase(),
+        'drivingLicense': _drivingLicenseController.text.trim(),
+      });
+      await batch.commit();
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Profile updated!'), backgroundColor: primaryGreen));
-      
-      // 这里带着 true 返回上一页，就会触发 user_profile_screen 里的 _fetchUserData() 重新加载！
-      Navigator.pop(context, true); 
-
+      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -156,7 +136,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                   ? NetworkImage(widget.currentPhotoURL!) as ImageProvider
                                   : null,
                           child: (_pickedImage == null && (widget.currentPhotoURL == null || widget.currentPhotoURL!.isEmpty))
-                              ? Icon(Icons.person, size: 48, color: Colors.grey[400])
+                              ? Icon(Icons.motorcycle, size: 48, color: Colors.grey[400])
                               : null,
                         ),
                         Positioned(
@@ -181,17 +161,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 const SizedBox(height: 20),
                 _buildTextField(controller: _phoneController, label: "Phone Number", icon: Icons.phone_outlined, keyboardType: TextInputType.phone, validator: (v) => v!.trim().isEmpty ? "Phone required" : null),
                 const SizedBox(height: 20),
-                TextFormField(
-                  controller: _dobController,
-                  readOnly: true,
-                  onTap: () => _selectDate(context),
-                  decoration: InputDecoration(
-                    labelText: "Date of Birth (Optional)",
-                    prefixIcon: Icon(Icons.calendar_month_outlined, color: Colors.grey[500]),
-                    fillColor: Colors.white, filled: true,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                  ),
-                ),
+                _buildTextField(controller: _vehiclePlateController, label: "Vehicle Plate Number", icon: Icons.motorcycle_outlined, validator: (v) => v!.trim().isEmpty ? "Vehicle plate required" : null),
+                const SizedBox(height: 20),
+                _buildTextField(controller: _drivingLicenseController, label: "Driving License ID", icon: Icons.badge_outlined, validator: (v) => v!.trim().isEmpty ? "Driving license required" : null),
                 const SizedBox(height: 20),
                 TextFormField(
                   initialValue: widget.currentEmail,

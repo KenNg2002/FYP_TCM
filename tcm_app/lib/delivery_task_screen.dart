@@ -1,6 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'notification_service.dart';
 
 class DeliveryTaskScreen extends StatefulWidget {
   @override
@@ -19,7 +23,7 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
   void initState() {
     super.initState();
     currentRiderId = FirebaseAuth.instance.currentUser?.uid ?? "TEST_RIDER_001";
-    _fetchCurrentAvailability(); 
+    _fetchCurrentAvailability();
   }
 
   // 1. 获取上下线状态
@@ -38,9 +42,9 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     }
   }
 
-  // 2. 切换上下线
+  // 2. 切换上下线（有未完成的活跃任务时，UI 层会禁用这个开关，这里不需要再防呆）
   Future<void> _toggleOnlineStatus(bool value) async {
-    setState(() { _isOnline = value; }); 
+    setState(() { _isOnline = value; });
     try {
       await FirebaseFirestore.instance.collection('DeliveryMan').doc(currentRiderId).update({
         'currentAvailability': value ? 'Online' : 'Offline'
@@ -59,64 +63,33 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     }
   }
 
-  // 🚀 3. 核心功能：原子级安全抢单
-  Future<void> _grabOrder(String orderId, String shippingAddress) async {
-    DocumentReference orderRef = FirebaseFirestore.instance.collection('Order').doc(orderId);
-    DocumentReference newTaskRef = FirebaseFirestore.instance.collection('DeliveryTask').doc();
-
-    showDialog(
-      context: context, barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
+  // 通知下单的客户：查一下这张订单的 customerID 再推送给他
+  Future<void> _notifyCustomer(String orderId, String title, String body) async {
     try {
-      await FirebaseFirestore.instance.runTransaction((transaction) async {
-        DocumentSnapshot orderSnapshot = await transaction.get(orderRef);
-        if (!orderSnapshot.exists) throw Exception("Order does not exist!");
-
-        if (orderSnapshot.get('orderStatus') != 'ReadyToPickUp') {
-          throw Exception("Order has already been grabbed!");
-        }
-
-        transaction.update(orderRef, {'orderStatus': 'Accepted'});
-
-        // 完美契合你的 UI 字段要求
-        transaction.set(newTaskRef, {
-          'taskID': newTaskRef.id,
-          'orderID': orderId,
-          'deliverymanID': currentRiderId,
-          'taskStatus': 'Pending Pickup', // 匹配你的状态判断
-          'pickupLocation': 'TCM Clinic HQ', 
-          'dropoffLocation': shippingAddress, 
-          'proofOfDeliveryPhoto': '',
-          'acceptedTime': FieldValue.serverTimestamp(),
-          'pickupTime': null,
-          'completedTime': null,
-        });
-      });
-
-      Navigator.pop(context); 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🎉 Grabbed successfully!'), backgroundColor: Colors.green));
+      final orderSnap = await FirebaseFirestore.instance.collection('Order').doc(orderId).get();
+      final customerId = orderSnap.data()?['customerID'] as String?;
+      if (customerId == null) return;
+      NotificationService.instance.send(uids: [customerId], title: title, body: body, data: {'orderId': orderId});
     } catch (e) {
-      Navigator.pop(context); 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed: 手慢了，已被抢走！'), backgroundColor: Colors.redAccent));
+      print("Failed to notify customer: $e");
     }
   }
 
-  // 4. 确认取货
-  Future<void> _pickUpParcel(String taskId, String orderId) async {
+  // 3. 骑手点击 "开始配送"：任务由 Admin 指派，这里不再有抢单/确认取货这两步
+  Future<void> _startDelivery(String taskId, String orderId) async {
     try {
       WriteBatch batch = FirebaseFirestore.instance.batch();
-      batch.update(FirebaseFirestore.instance.collection('DeliveryTask').doc(taskId), {'taskStatus': 'Delivering', 'pickupTime': FieldValue.serverTimestamp()});
+      batch.update(FirebaseFirestore.instance.collection('DeliveryTask').doc(taskId), {'taskStatus': 'Delivering', 'startTime': FieldValue.serverTimestamp()});
       batch.update(FirebaseFirestore.instance.collection('Order').doc(orderId), {'orderStatus': 'Delivering'});
       await batch.commit();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Parcel Picked Up! Head to customer.'), backgroundColor: Colors.blueAccent));
+      _notifyCustomer(orderId, 'Order Out for Delivery', 'Your order $orderId is on its way!');
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Delivery Started! Head to customer.'), backgroundColor: Colors.blueAccent));
     } catch (e) {
-      print("Pickup Error: $e");
+      print("Start Delivery Error: $e");
     }
   }
 
-  // 5. 拍照上传完成订单
+  // 4. 拍照上传完成订单
   void _uploadProofAndComplete(String taskId, String orderId) {
     showModalBottomSheet(
       context: context, backgroundColor: Colors.white,
@@ -134,8 +107,8 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () {
-                  Navigator.pop(context); 
-                  _simulateUploadingAndComplete(taskId, orderId); 
+                  Navigator.pop(context);
+                  _captureAndCompleteDelivery(taskId, orderId);
                 },
                 icon: const Icon(Icons.camera_rounded, color: Colors.white),
                 label: const Text("Open Camera", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
@@ -148,7 +121,27 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     );
   }
 
-  Future<void> _simulateUploadingAndComplete(String taskId, String orderId) async {
+  // 真正打开相机拍照，取消则不允许完成订单
+  Future<void> _captureAndCompleteDelivery(String taskId, String orderId) async {
+    XFile? photo;
+    try {
+      photo = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 80);
+    } catch (e) {
+      print("Camera Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open camera: $e'), backgroundColor: Colors.redAccent));
+      }
+      return;
+    }
+
+    if (photo == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No photo taken. Delivery not completed.'), backgroundColor: Colors.redAccent));
+      }
+      return;
+    }
+
+    if (!mounted) return;
     showDialog(
       context: context, barrierDismissible: false,
       builder: (context) => AlertDialog(
@@ -157,107 +150,101 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
       ),
     );
 
-    await Future.delayed(const Duration(milliseconds: 1500));
-    
     try {
+      // 上传真实照片到 Firebase Storage
+      Reference storageRef = FirebaseStorage.instance.ref().child('delivery_proofs/$taskId.jpg');
+      await storageRef.putFile(File(photo.path));
+      String downloadUrl = await storageRef.getDownloadURL();
+
       WriteBatch batch = FirebaseFirestore.instance.batch();
-      batch.update(FirebaseFirestore.instance.collection('DeliveryTask').doc(taskId), {'taskStatus': 'Completed', 'completedTime': FieldValue.serverTimestamp(), 'proofOfDeliveryPhoto': 'https://dummy.com/proof.jpg'});
+      batch.update(FirebaseFirestore.instance.collection('DeliveryTask').doc(taskId), {'taskStatus': 'Completed', 'completedTime': FieldValue.serverTimestamp(), 'proofOfDeliveryPhoto': downloadUrl});
       batch.update(FirebaseFirestore.instance.collection('Order').doc(orderId), {'orderStatus': 'Completed'});
       await batch.commit();
-      Navigator.pop(context); 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Delivery Completed!'), backgroundColor: Colors.green));
+      _notifyCustomer(orderId, 'Order Delivered', 'Your order $orderId has been delivered. Enjoy!');
+
+      if (mounted) Navigator.pop(context);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Delivery Completed!'), backgroundColor: Colors.green));
     } catch (e) {
-      Navigator.pop(context);
       print("Complete Error: $e");
+      if (mounted) Navigator.pop(context);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e'), backgroundColor: Colors.redAccent));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: bgGray,
-      appBar: AppBar(
-        backgroundColor: primaryGreen, elevation: 0, centerTitle: false, automaticallyImplyLeading: false,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Rider Dashboard", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)), 
-            Text(
-              _isLoadingStatus ? "Loading status..." : (_isOnline ? "Online • Ready for orders" : "Offline • Not taking orders"), 
-              style: TextStyle(color: _isOnline ? Colors.greenAccent : Colors.red[200], fontSize: 12, fontWeight: FontWeight.bold)
-            )
-          ],
-        ),
-        actions: [
-          if (!_isLoadingStatus)
-            Padding(
-              padding: const EdgeInsets.only(right: 12.0),
-              child: Switch(
-                value: _isOnline,
-                onChanged: _toggleOnlineStatus,
-                activeColor: Colors.white,
-                activeTrackColor: Colors.greenAccent[400],
-                inactiveThumbColor: Colors.white,
-                inactiveTrackColor: Colors.red[300],
-              ),
-            )
-        ],
-      ),
-      body: !_isOnline 
-        ? _buildEmptyState() 
-        // 🚀 双流监听架构：先看自己有没有在派的单
-        : StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('DeliveryTask')
-                .where('deliverymanID', isEqualTo: currentRiderId)
-                .where('taskStatus', whereIn: ['Pending Pickup', 'Delivering'])
-                .snapshots(),
-            builder: (context, activeSnapshot) {
-              if (activeSnapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: primaryGreen));
-              
-              var activeTasks = activeSnapshot.data?.docs ?? [];
-              
-              if (activeTasks.isNotEmpty) {
-                // 👉 有专属任务：显示你设计的绿色统计数据 + 任务卡片
-                int pending = activeTasks.where((t) => t["taskStatus"] == "Pending Pickup").length;
-                int delivering = activeTasks.where((t) => t["taskStatus"] == "Delivering").length;
+    // 🚀 单一数据源：骑手当前被指派、尚未完成的任务。
+    // 这条 Stream 同时用来渲染任务卡片 + 决定 Online/Offline 开关是否要被锁死。
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('DeliveryTask')
+          .where('deliverymanID', isEqualTo: currentRiderId)
+          .where('taskStatus', whereIn: ['Assigned', 'Delivering'])
+          .snapshots(),
+      builder: (context, taskSnapshot) {
+        var activeTasks = taskSnapshot.data?.docs ?? [];
+        bool hasActiveTask = activeTasks.isNotEmpty;
 
-                return Column(
-                  children: [
-                    _buildRiderStats(pending, delivering),
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(20),
-                        itemCount: activeTasks.length,
-                        itemBuilder: (context, index) {
-                          var taskData = activeTasks[index].data() as Map<String, dynamic>;
-                          return _buildActiveTaskCard(taskData, activeTasks[index].id);
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              } else {
-                // 👉 没专属任务：去监听全局的 "抢单大厅"
-                return StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance.collection('Order')
-                      .where('orderStatus', isEqualTo: 'ReadyToPickUp')
-                      .snapshots(),
-                  builder: (context, broadcastSnapshot) {
-                    if (broadcastSnapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                    
-                    var broadcastOrders = broadcastSnapshot.data?.docs ?? [];
-                    if (broadcastOrders.isEmpty) return _buildEmptyState();
-
-                    return ListView.builder(
-                      padding: const EdgeInsets.all(20),
-                      itemCount: broadcastOrders.length,
-                      itemBuilder: (context, index) => _buildGrabCard(broadcastOrders[index]),
-                    );
-                  }
-                );
-              }
-            }
+        return Scaffold(
+          backgroundColor: bgGray,
+          appBar: AppBar(
+            backgroundColor: primaryGreen, elevation: 0, centerTitle: false, automaticallyImplyLeading: false,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Rider Dashboard", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
+                Text(
+                  _isLoadingStatus ? "Loading status..." : (_isOnline ? "Online • Ready for orders" : "Offline • Not taking orders"),
+                  style: TextStyle(color: _isOnline ? Colors.greenAccent : Colors.red[200], fontSize: 12, fontWeight: FontWeight.bold)
+                ),
+                if (hasActiveTask)
+                  const Text(
+                    "Locked while you have an active delivery",
+                    style: TextStyle(color: Colors.white70, fontSize: 10, fontStyle: FontStyle.italic),
+                  ),
+              ],
+            ),
+            actions: [
+              if (!_isLoadingStatus)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12.0),
+                  child: Switch(
+                    value: _isOnline,
+                    // 防呆机制：手头有未完成的活跃订单时，禁止切换 Online/Offline
+                    onChanged: hasActiveTask ? null : _toggleOnlineStatus,
+                    activeColor: Colors.white,
+                    activeTrackColor: Colors.greenAccent[400],
+                    inactiveThumbColor: Colors.white,
+                    inactiveTrackColor: Colors.red[300],
+                  ),
+                )
+            ],
           ),
+          body: !_isOnline && !hasActiveTask
+            ? _buildEmptyState()
+            : taskSnapshot.connectionState == ConnectionState.waiting
+              ? Center(child: CircularProgressIndicator(color: primaryGreen))
+              : activeTasks.isEmpty
+                ? _buildEmptyState()
+                : Column(
+                    children: [
+                      _buildRiderStats(
+                        activeTasks.where((t) => t["taskStatus"] == "Assigned").length,
+                        activeTasks.where((t) => t["taskStatus"] == "Delivering").length,
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(20),
+                          itemCount: activeTasks.length,
+                          itemBuilder: (context, index) {
+                            var taskData = activeTasks[index].data() as Map<String, dynamic>;
+                            return _buildActiveTaskCard(taskData, activeTasks[index].id);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+        );
+      },
     );
   }
 
@@ -271,19 +258,19 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
           Icon(_isOnline ? Icons.motorcycle : Icons.snooze_rounded, size: 80, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(_isOnline ? "No Active Tasks" : "You are Offline", style: TextStyle(color: Colors.grey[800], fontSize: 18, fontWeight: FontWeight.bold)),
-          Text(_isOnline ? "Take a break! Waiting for dispatch." : "Switch to Online to start taking orders.", style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+          Text(_isOnline ? "Take a break! Waiting for the clinic to assign you an order." : "Switch to Online to start receiving orders.", style: TextStyle(color: Colors.grey[500], fontSize: 14), textAlign: TextAlign.center),
         ],
       ),
     );
   }
 
-  Widget _buildRiderStats(int pending, int delivering) {
+  Widget _buildRiderStats(int assigned, int delivering) {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 30),
       decoration: BoxDecoration(color: primaryGreen, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)), boxShadow: [BoxShadow(color: primaryGreen.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 5))]),
       child: Row(
         children: [
-          _buildStatBox("To Pick Up", pending.toString(), Icons.inventory_2_rounded),
+          _buildStatBox("Assigned", assigned.toString(), Icons.inventory_2_rounded),
           const SizedBox(width: 16),
           _buildStatBox("Delivering", delivering.toString(), Icons.motorcycle_rounded),
         ],
@@ -303,9 +290,9 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     );
   }
 
-  // 骑手已接的单：你设计的完美任务卡片
+  // 骑手被指派的任务卡片
   Widget _buildActiveTaskCard(Map<String, dynamic> task, String taskId) {
-    bool isPendingPickup = task["taskStatus"] == "Pending Pickup";
+    bool isAssigned = task["taskStatus"] == "Assigned";
     String orderId = task['orderID'] ?? 'Unknown';
 
     return Container(
@@ -319,7 +306,7 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Order #$orderId", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF4B5563))),
+                const Text("Delivery Task", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF4B5563))),
                 _buildStatusChip(task["taskStatus"]),
               ],
             ),
@@ -354,10 +341,10 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => isPendingPickup ? _pickUpParcel(taskId, orderId) : _uploadProofAndComplete(taskId, orderId),
-                icon: Icon(isPendingPickup ? Icons.inventory_2_rounded : Icons.camera_alt_rounded, color: Colors.white),
-                label: Text(isPendingPickup ? "Confirm Pick Up" : "Upload Proof & Complete", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(backgroundColor: isPendingPickup ? Colors.blueAccent : primaryGreen, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
+                onPressed: () => isAssigned ? _startDelivery(taskId, orderId) : _uploadProofAndComplete(taskId, orderId),
+                icon: Icon(isAssigned ? Icons.play_arrow_rounded : Icons.camera_alt_rounded, color: Colors.white),
+                label: Text(isAssigned ? "Start Delivery" : "Upload Proof & Complete", style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(backgroundColor: isAssigned ? Colors.blueAccent : primaryGreen, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
               ),
             ),
           ),
@@ -366,58 +353,9 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     );
   }
 
-  // 大厅抢单卡片
-  Widget _buildGrabCard(QueryDocumentSnapshot order) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))]),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text("Order: ${order['orderID'] ?? order.id}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(10)), child: const Text("Ready to Pick Up", style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold))),
-            ],
-          ),
-          const Divider(height: 24),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.location_on, color: primaryGreen, size: 20),
-              const SizedBox(width: 8),
-              Expanded(child: Text(order['shippingAddress'] ?? 'No Address', style: const TextStyle(fontSize: 13, color: Color(0xFF1F2937)))),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Earning (Total)", style: TextStyle(fontSize: 10, color: Colors.grey)),
-                  Text("RM ${(order['totalAmount'] ?? 0.0).toStringAsFixed(2)}", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryGreen)),
-                ],
-              ),
-              ElevatedButton.icon(
-                onPressed: () => _grabOrder(order.id, order['shippingAddress'] ?? 'No Address'),
-                icon: const Icon(Icons.flash_on, color: Colors.white, size: 16),
-                label: const Text("GRAB NOW", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
-              )
-            ],
-          )
-        ],
-      ),
-    );
-  }
-
   Widget _buildStatusChip(String status) {
-    Color bgColor = status == "Pending Pickup" ? Colors.blue[50]! : Colors.orange[50]!;
-    Color textColor = status == "Pending Pickup" ? Colors.blue[700]! : Colors.orange[800]!;
+    Color bgColor = status == "Assigned" ? Colors.blue[50]! : Colors.orange[50]!;
+    Color textColor = status == "Assigned" ? Colors.blue[700]! : Colors.orange[800]!;
     return Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)), child: Text(status, style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.bold)));
   }
 }

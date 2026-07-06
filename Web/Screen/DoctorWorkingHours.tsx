@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Clock, CalendarRange, Loader2, X, Edit, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Trash2, Clock, CalendarRange, Loader2, Edit, AlertCircle } from 'lucide-react';
 import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 
@@ -16,21 +16,22 @@ const dayOrder: { [key: string]: number } = {
   'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 7
 };
 
+const emptyForm = {
+  dayOfWeek: 'Monday',
+  startTime: '09:00',
+  endTime: '17:00'
+};
+
 const DoctorWorkingHours: React.FC = () => {
   const navigate = useNavigate();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [adminID, setAdminID] = useState<string>('');
 
-  // 弹窗与表单状态
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // 表单状态 (常驻左边，不再用弹窗)
   const [editingId, setEditingId] = useState<string | null>(null); // 记录当前正在编辑的 ID
   const [errorMsg, setErrorMsg] = useState<string>(''); // 用于显示重复添加的错误信息
-  const [form, setForm] = useState({
-    dayOfWeek: 'Monday',
-    startTime: '09:00',
-    endTime: '17:00'
-  });
+  const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
     fetchWorkingHours();
@@ -46,7 +47,7 @@ const DoctorWorkingHours: React.FC = () => {
 
       const q = query(collection(db, 'Schedule'), where('adminID', '==', currentUser.uid));
       const querySnapshot = await getDocs(q);
-      
+
       const fetchedSchedules = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -61,24 +62,20 @@ const DoctorWorkingHours: React.FC = () => {
     }
   };
 
-  // 打开“新建”弹窗
-  const openNewModal = () => {
+  const resetForm = () => {
     setEditingId(null);
-    setForm({ dayOfWeek: 'Monday', startTime: '09:00', endTime: '17:00' });
+    setForm(emptyForm);
     setErrorMsg('');
-    setIsModalOpen(true);
   };
 
-  // 打开“编辑”弹窗
-  const openEditModal = (schedule: Schedule) => {
+  const loadFormForEdit = (schedule: Schedule) => {
     setEditingId(schedule.id);
-    setForm({ 
-      dayOfWeek: schedule.dayOfWeek, 
-      startTime: schedule.startTime, 
-      endTime: schedule.endTime 
+    setForm({
+      dayOfWeek: schedule.dayOfWeek,
+      startTime: schedule.startTime,
+      endTime: schedule.endTime
     });
     setErrorMsg('');
-    setIsModalOpen(true);
   };
 
   // 2. 保存数据 (Create & Update) + 防重验证
@@ -116,9 +113,9 @@ const DoctorWorkingHours: React.FC = () => {
           endTime: form.endTime,
         });
       }
-      
-      setIsModalOpen(false);
-      fetchWorkingHours(); 
+
+      resetForm();
+      fetchWorkingHours();
     } catch (error) {
       console.error("Error saving schedule:", error);
       alert("Failed to save schedule.");
@@ -132,6 +129,7 @@ const DoctorWorkingHours: React.FC = () => {
       setIsLoading(true);
       try {
         await deleteDoc(doc(db, 'Schedule', id));
+        if (editingId === id) resetForm();
         fetchWorkingHours();
       } catch (error) {
         console.error("Error deleting schedule:", error);
@@ -142,137 +140,119 @@ const DoctorWorkingHours: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in relative">
-      
+    <div className="space-y-6 animate-fade-in">
+
       {/* 顶部操作栏 */}
-      <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100 flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <button 
-            onClick={() => navigate('/dashboard')} 
-            className="p-3 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-xl transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h2 className="text-2xl font-black text-gray-800 tracking-wide">Working Hours</h2>
-            <p className="text-sm text-gray-500 font-medium mt-1">Configure your weekly availability for patient bookings.</p>
-          </div>
-        </div>
-        <button 
-          onClick={openNewModal}
-          className="flex items-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-bold text-sm shadow-md transition-colors"
+      <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100 flex items-center space-x-4">
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="p-3 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-xl transition-colors"
         >
-          <Plus className="w-5 h-5 mr-1" /> Add New Slot
+          <ArrowLeft className="w-5 h-5" />
         </button>
+        <div>
+          <h2 className="text-2xl font-black text-gray-800 tracking-wide">Working Hours</h2>
+          <p className="text-sm text-gray-500 font-medium mt-1">Configure your weekly availability for patient bookings.</p>
+        </div>
       </div>
 
-      {/* 排班列表 */}
-      <div className="bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden">
-        {isLoading ? (
-          <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
-        ) : schedules.length === 0 ? (
-          <div className="p-12 text-center">
-            <CalendarRange className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 font-medium">You haven't set any working hours yet.</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+
+        {/* 左边：Add / Edit Time Slot 表单 */}
+        <div className="lg:col-span-1 bg-white rounded-[24px] shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-gray-800 flex items-center">
+              <CalendarRange className="w-5 h-5 mr-2 text-blue-600" />
+              {editingId ? 'Edit Time Slot' : 'Add Time Slot'}
+            </h3>
+            {editingId && (
+              <button onClick={resetForm} className="text-xs font-bold text-gray-400 hover:text-gray-600">
+                Cancel
+              </button>
+            )}
           </div>
-        ) : (
-          <table className="w-full text-sm text-left text-gray-500">
-            <thead className="text-xs text-gray-700 uppercase bg-gray-50 border-b border-gray-100">
-              <tr>
-                <th className="px-8 py-5">Day of Week</th>
-                <th className="px-8 py-5">Time Slot</th>
-                <th className="px-8 py-5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+
+          {/* ⚠️ 错误提示区：如果有 duplicate 就会显示红框 */}
+          {errorMsg && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-xs font-bold rounded-lg flex items-start">
+              <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0 mt-0.5" />
+              {errorMsg}
+            </div>
+          )}
+
+          <form onSubmit={handleSave} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Day of the Week</label>
+              <select
+                required value={form.dayOfWeek} onChange={e => setForm({ ...form, dayOfWeek: e.target.value })}
+                className="w-full p-3 bg-gray-50 border border-transparent rounded-xl outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+              >
+                <option value="Monday">Monday</option><option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option><option value="Saturday">Saturday</option>
+                <option value="Sunday">Sunday</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Start Time</label>
+                <input required type="time" value={form.startTime} onChange={e => setForm({ ...form, startTime: e.target.value })} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">End Time</label>
+                <input required type="time" value={form.endTime} onChange={e => setForm({ ...form, endTime: e.target.value })} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
+              </div>
+            </div>
+
+            <button type="submit" disabled={isLoading} className="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200 transition-colors disabled:opacity-70">
+              {isLoading ? 'Saving...' : editingId ? 'Update Weekly Routine' : 'Save Weekly Routine'}
+            </button>
+          </form>
+        </div>
+
+        {/* 右边：排班列表 */}
+        <div className="lg:col-span-2 bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden">
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
+          ) : schedules.length === 0 ? (
+            <div className="p-12 text-center">
+              <CalendarRange className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 font-medium">You haven't set any working hours yet.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
               {schedules.map((schedule) => (
-                <tr key={schedule.id} className="border-b hover:bg-gray-50 transition-colors">
-                  <td className="px-8 py-5">
-                    <span className="font-black text-gray-800 text-base">{schedule.dayOfWeek}</span>
-                  </td>
-                  <td className="px-8 py-5">
+                <div key={schedule.id} className={`flex items-center justify-between px-6 py-5 hover:bg-gray-50 transition-colors ${editingId === schedule.id ? 'bg-blue-50/50' : ''}`}>
+                  <div className="flex items-center space-x-4">
+                    <span className="font-black text-gray-800 text-base w-28">{schedule.dayOfWeek}</span>
                     <div className="flex items-center space-x-2 bg-blue-50 text-blue-700 w-max px-4 py-2 rounded-lg font-bold">
                       <Clock className="w-4 h-4" />
                       <span>{schedule.startTime} - {schedule.endTime}</span>
                     </div>
-                  </td>
-                  <td className="px-8 py-5 text-right space-x-2">
-                    {/* ⚠️ 新增 Edit 按钮 */}
-                    <button 
-                      onClick={() => openEditModal(schedule)}
-                      className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors inline-block"
+                  </div>
+                  <div className="flex items-center space-x-2 flex-shrink-0">
+                    <button
+                      onClick={() => loadFormForEdit(schedule)}
+                      className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
                       title="Edit Slot"
                     >
                       <Edit className="w-5 h-5" />
                     </button>
-                    {/* Delete 按钮 */}
-                    <button 
+                    <button
                       onClick={() => handleDelete(schedule.id, schedule.dayOfWeek)}
-                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors inline-block"
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                       title="Delete Slot"
                     >
                       <Trash2 className="w-5 h-5" />
                     </button>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Add / Edit 弹窗 */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm">
-          <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-md p-8 animate-fade-in">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center">
-                <CalendarRange className="mr-2 text-blue-600"/> 
-                {editingId ? 'Edit Time Slot' : 'New Time Slot'}
-              </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:bg-gray-100 p-2 rounded-full"><X className="w-5 h-5" /></button>
             </div>
-            
-            {/* ⚠️ 错误提示区：如果有 duplicate 就会显示红框 */}
-            {errorMsg && (
-              <div className="mb-6 p-3 bg-red-50 border border-red-100 text-red-600 text-xs font-bold rounded-lg flex items-start">
-                <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0 mt-0.5" />
-                {errorMsg}
-              </div>
-            )}
-
-            <form onSubmit={handleSave} className="space-y-5">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Day of the Week</label>
-                <select 
-                  required value={form.dayOfWeek} onChange={e => setForm({...form, dayOfWeek: e.target.value})} 
-                  className="w-full p-3 bg-gray-50 border border-transparent rounded-xl outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                >
-                  <option value="Monday">Monday</option><option value="Tuesday">Tuesday</option>
-                  <option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option>
-                  <option value="Friday">Friday</option><option value="Saturday">Saturday</option>
-                  <option value="Sunday">Sunday</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Start Time</label>
-                  <input required type="time" value={form.startTime} onChange={e => setForm({...form, startTime: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">End Time</label>
-                  <input required type="time" value={form.endTime} onChange={e => setForm({...form, endTime: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200" />
-                </div>
-              </div>
-
-              <button type="submit" disabled={isLoading} className="w-full mt-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-200 transition-colors disabled:opacity-70">
-                {isLoading ? 'Saving...' : 'Save Weekly Routine'}
-              </button>
-            </form>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };

@@ -110,7 +110,7 @@ const AdminLogin: React.FC = () => {
           <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center shadow-md mb-4">
             <Leaf className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-black text-gray-800 tracking-wide">TCM Staff Portal</h1>
+          <h1 className="text-2xl font-black text-gray-800 tracking-wide">SH Wellness Staff Portal</h1>
           <p className="text-sm text-gray-400 mt-2 font-medium">Secure Access for Admins & Doctors</p>
         </div>
 
@@ -198,7 +198,7 @@ const AdminLogin: React.FC = () => {
 
       {/* Footer Text */}
       <p className="mt-8 text-xs font-medium text-gray-400">
-        &copy; 2026 Traditional Chinese Medicine System. All rights reserved.
+        &copy; 2026 SH Wellness. All rights reserved.
       </p>
     </div>
   );

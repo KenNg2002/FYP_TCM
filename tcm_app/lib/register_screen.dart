@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -22,6 +25,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   // bool _agreeToTerms = false; // 暂时注释掉
   bool _isLoading = false;
 
+  File? _pickedImage;
+
   final Color primaryGreen = const Color(0xFF2E7D32);
   final Color bgGray = const Color(0xFFF4F6F8);
 
@@ -33,6 +38,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _phoneController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickImage() async {
+    final XFile? picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 80);
+    if (picked != null) {
+      setState(() => _pickedImage = File(picked.path));
+    }
   }
 
   Future<void> _handleRegister() async {
@@ -57,14 +69,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       String uid = userCredential.user!.uid;
 
+      String? photoURL;
+      if (_pickedImage != null) {
+        final storageRef = FirebaseStorage.instance.ref().child('profile_photos/$uid.jpg');
+        await storageRef.putFile(_pickedImage!);
+        photoURL = await storageRef.getDownloadURL();
+      }
+
       await FirebaseFirestore.instance.collection('User').doc(uid).set({
         'userID': uid,
         'username': _nameController.text.trim(),
         'userEmail': _emailController.text.trim(),
-        'userPhoneNum': _phoneController.text.trim(), 
-        'userRole': 'Customer', 
+        'userPhoneNum': _phoneController.text.trim(),
+        'userRole': 'Customer',
         'userRegistedDate': FieldValue.serverTimestamp(),
         'accountStatus': 'Active',
+        'photoURL': photoURL,
       });
 
       if (!mounted) return;
@@ -117,7 +137,46 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 const Text("Create Account", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF212121))),
                 const SizedBox(height: 8),
                 Text("Join us to balance your lifestyle", style: TextStyle(fontSize: 16, color: Colors.grey[600])),
-                const SizedBox(height: 30),
+                const SizedBox(height: 24),
+
+                Center(
+                  child: GestureDetector(
+                    onTap: _pickImage,
+                    child: Stack(
+                      children: [
+                        CircleAvatar(
+                          radius: 48,
+                          backgroundColor: bgGray,
+                          backgroundImage: _pickedImage != null ? FileImage(_pickedImage!) : null,
+                          child: _pickedImage == null
+                              ? Icon(Icons.person, size: 48, color: Colors.grey[400])
+                              : null,
+                        ),
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: primaryGreen,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                            child: const Icon(Icons.camera_alt, size: 16, color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: Text(
+                    "Add a profile photo (optional)",
+                    style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                  ),
+                ),
+                const SizedBox(height: 24),
 
                 // 🔒 验证：名字不可为空或全空格
                 _buildFormField(

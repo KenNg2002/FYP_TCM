@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -22,8 +23,20 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
   String _selectedTimeSlot = "";
   
   // 医生工作日预查列表
-  List<String> _workingDays = []; 
-  
+  List<String> _workingDays = [];
+  // dayOfWeek -> {startTime, endTime}，初始化时一次抓好，避免每次选日期都重新查 Schedule
+  Map<String, Map<String, String>> _scheduleByDay = {};
+  // 当前日历显示月份里，整天都没名额的日期 ('yyyy-MM-dd')
+  Set<String> _fullyBookedDates = {};
+
+  // 🚀 实时数据：其他病人随时可能抢订，医生也可能随时新增 Block Time，
+  // 用 Stream 而不是一次性 get()，这样这个页面开着的时候数据不会过期
+  StreamSubscription<QuerySnapshot>? _appointmentSubscription;
+  StreamSubscription<QuerySnapshot>? _blockTimeSubscription;
+  List<Map<String, dynamic>> _allAppointments = [];
+  List<Map<String, dynamic>> _allBlockTimes = [];
+  DateTime _viewedMonth = DateTime.now();
+
   bool _isInitializing = true;
   bool _isLoadingSlots = false;
   bool _isConfirming = false;
@@ -34,10 +47,18 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     _initializeApp();
   }
 
-  // 🚀 初始化应用：查医生工作日 -> 自动选中最近一天 -> 查时间槽
+  @override
+  void dispose() {
+    _appointmentSubscription?.cancel();
+    _blockTimeSubscription?.cancel();
+    _remarkController.dispose();
+    super.dispose();
+  }
+
+  // 🚀 初始化应用：查医生工作日 -> 自动选中最近一天 -> 订阅实时预约/拦截时间数据
   Future<void> _initializeApp() async {
-    await _fetchWorkingDays(); 
-    
+    await _fetchWorkingDays();
+
     // 自动寻找未来 90 天里，医生最近的第一个上班日
     DateTime initial = DateTime.now();
     if (_workingDays.isNotEmpty) {
@@ -49,28 +70,148 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
         }
       }
     }
-    
+
     _selectedDate = initial;
-    await _fetchDoctorSchedule(); 
-    
-    if (mounted) setState(() => _isInitializing = false);
+    _viewedMonth = initial;
+    _listenToLiveBookingData();
   }
 
-  // 查询 Schedule 表找出医生每周哪几天有排班
+  // 实时监听这个医生的 Appointment + BlockTime，任何一边一有变化就重新计算可选时段
+  void _listenToLiveBookingData() {
+    String adminID = widget.doctor['adminID'];
+
+    _appointmentSubscription = FirebaseFirestore.instance
+        .collection('Appointment')
+        .where('adminID', isEqualTo: adminID)
+        .snapshots()
+        .listen((snapshot) {
+      _allAppointments = snapshot.docs.map((d) => d.data()).toList();
+      _recomputeAvailability();
+    }, onError: (e) => debugPrint("Appointment stream error: $e"));
+
+    _blockTimeSubscription = FirebaseFirestore.instance
+        .collection('BlockTime')
+        .where('adminID', isEqualTo: adminID)
+        .snapshots()
+        .listen((snapshot) {
+      _allBlockTimes = snapshot.docs.map((d) => d.data()).toList();
+      _recomputeAvailability();
+    }, onError: (e) => debugPrint("BlockTime stream error: $e"));
+  }
+
+  void _recomputeAvailability() {
+    if (!mounted) return;
+    _computeFullyBookedDatesForMonth(_viewedMonth);
+    if (_selectedDate != null) _generateTimeSlotsForSelectedDate();
+    if (_isInitializing) setState(() => _isInitializing = false);
+  }
+
+  // 查询 Schedule 表找出医生每周哪几天有排班，顺便把每天的上下班时间也缓存起来
   Future<void> _fetchWorkingDays() async {
     try {
       var snap = await FirebaseFirestore.instance.collection('Schedule')
           .where('adminID', isEqualTo: widget.doctor['adminID'])
           .get();
-      
+
       _workingDays = snap.docs.map((doc) => doc['dayOfWeek'] as String).toList();
+      _scheduleByDay = {
+        for (var doc in snap.docs)
+          doc['dayOfWeek'] as String: {
+            'startTime': doc['startTime'] as String,
+            'endTime': doc['endTime'] as String,
+          }
+      };
     } catch (e) {
       debugPrint("Fetch working days error: $e");
     }
   }
 
-  // 生成可用时间槽
-  Future<void> _fetchDoctorSchedule() async {
+  // 🚀 算出当前显示月份里，哪些日期整天都没有名额了 (用来在日历上灰掉)
+  // 数据来自实时监听的 _allAppointments / _allBlockTimes，不用再单独查一次 Firestore
+  void _computeFullyBookedDatesForMonth(DateTime month) {
+    _viewedMonth = month;
+    if (_workingDays.isEmpty) return;
+
+    DateTime today = DateTime.now();
+    DateTime firstSelectable = DateTime(today.year, today.month, today.day);
+    DateTime lastSelectable = firstSelectable.add(const Duration(days: 90));
+
+    DateTime monthStart = DateTime(month.year, month.month, 1);
+    DateTime monthEnd = DateTime(month.year, month.month + 1, 0);
+
+    DateTime rangeFrom = monthStart.isBefore(firstSelectable) ? firstSelectable : monthStart;
+    DateTime rangeTo = monthEnd.isAfter(lastSelectable) ? lastSelectable : monthEnd;
+
+    if (rangeFrom.isAfter(rangeTo)) {
+      if (mounted) setState(() => _fullyBookedDates = {});
+      return;
+    }
+
+    String fromStr = DateFormat('yyyy-MM-dd').format(rangeFrom);
+    String toStr = DateFormat('yyyy-MM-dd').format(rangeTo);
+
+    Map<String, List<String>> bookedTimesByDate = {};
+    for (var d in _allAppointments) {
+      String date = d['appointmentDate'];
+      if (date.compareTo(fromStr) < 0 || date.compareTo(toStr) > 0) continue;
+      bookedTimesByDate.putIfAbsent(date, () => []).add(d['appointmentTime']);
+    }
+
+    DateTime now = DateTime.now();
+    String todayStr = DateFormat('yyyy-MM-dd').format(now);
+    int nowMin = now.hour * 60 + now.minute;
+
+    Set<String> fullyBooked = {};
+
+    for (DateTime d = rangeFrom; !d.isAfter(rangeTo); d = d.add(const Duration(days: 1))) {
+      String dayOfWeek = DateFormat('EEEE').format(d);
+      var daySchedule = _scheduleByDay[dayOfWeek];
+      if (daySchedule == null) continue; // 本来就没排班，日历那边已经会灰掉
+
+      String dateString = DateFormat('yyyy-MM-dd').format(d);
+      int startMin = _timeToMinutes(daySchedule['startTime']!);
+      int endMin = _timeToMinutes(daySchedule['endTime']!);
+      bool isToday = dateString == todayStr;
+
+      List<Map<String, dynamic>> activeBlocks = [];
+      for (var b in _allBlockTimes) {
+        bool isRecurring = b['isRecurring'] ?? false;
+        if ((isRecurring && b['dayOfWeek'] == dayOfWeek) ||
+            (!isRecurring && b['specificDate'] == dateString)) {
+          activeBlocks.add(b);
+        }
+      }
+
+      List<String> bookedTimes = bookedTimesByDate[dateString] ?? [];
+
+      bool hasFreeSlot = false;
+      for (int time = startMin; time + 30 <= endMin; time += 30) {
+        int slotStart = time;
+        int slotEnd = time + 30;
+        String slotLabel = _minutesToAmPm(slotStart);
+
+        bool isBlocked = activeBlocks.any((block) {
+          int bStart = _timeToMinutes(block['startTime']);
+          int bEnd = _timeToMinutes(block['endTime']);
+          return (slotStart < bEnd && slotEnd > bStart);
+        });
+        bool isAlreadyBooked = bookedTimes.contains(slotLabel);
+        bool isPast = isToday && slotStart <= nowMin;
+
+        if (!isBlocked && !isAlreadyBooked && !isPast) {
+          hasFreeSlot = true;
+          break;
+        }
+      }
+
+      if (!hasFreeSlot) fullyBooked.add(dateString);
+    }
+
+    if (mounted) setState(() => _fullyBookedDates = fullyBooked);
+  }
+
+  // 生成可用时间槽：同样改用实时数据 _allAppointments / _allBlockTimes 现算，不用再查 Firestore
+  void _generateTimeSlotsForSelectedDate() {
     if (!mounted) return;
     setState(() {
       _isLoadingSlots = true;
@@ -78,88 +219,75 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
       _selectedTimeSlot = "";
     });
 
-    try {
-      String adminID = widget.doctor['adminID'];
-      String dayOfWeek = DateFormat('EEEE').format(_selectedDate!); 
-      String dateString = DateFormat('yyyy-MM-dd').format(_selectedDate!);
+    String dayOfWeek = DateFormat('EEEE').format(_selectedDate!);
+    String dateString = DateFormat('yyyy-MM-dd').format(_selectedDate!);
 
-      // 1. 获取常规排班
-      var scheduleSnap = await FirebaseFirestore.instance.collection('Schedule')
-          .where('adminID', isEqualTo: adminID)
-          .where('dayOfWeek', isEqualTo: dayOfWeek)
-          .get();
-
-      if (scheduleSnap.docs.isEmpty) {
-        if (mounted) setState(() => _isLoadingSlots = false);
-        return; 
-      }
-
-      var scheduleData = scheduleSnap.docs.first.data();
-      String schedStart = scheduleData['startTime']; 
-      String schedEnd = scheduleData['endTime'];     
-
-      // 2. 获取拦截时间 (请假/开会/特殊设置)
-      var blockSnap = await FirebaseFirestore.instance.collection('BlockTime')
-          .where('adminID', isEqualTo: adminID)
-          .get();
-
-      List<Map<String, dynamic>> activeBlocks = [];
-      for (var doc in blockSnap.docs) {
-        var b = doc.data();
-        bool isRecurring = b['isRecurring'] ?? false;
-        
-        if ((isRecurring && b['dayOfWeek'] == dayOfWeek) || 
-            (!isRecurring && b['specificDate'] == dateString)) {
-          activeBlocks.add(b);
-        }
-      }
-
-      // 3. 获取已被别人预约的时间
-      var apptSnap = await FirebaseFirestore.instance.collection('Appointment')
-          .where('adminID', isEqualTo: adminID)
-          .where('appointmentDate', isEqualTo: dateString)
-          .get();
-          
-      List<String> bookedTimes = apptSnap.docs.map((d) => d['appointmentTime'] as String).toList();
-
-      // 4. 切割时间槽 (每 30 分钟切割)
-      int startMin = _timeToMinutes(schedStart);
-      int endMin = _timeToMinutes(schedEnd);
-      int interval = 30; // 30分钟间隔
-
-      List<Map<String, dynamic>> generatedSlots = [];
-
-      for (int time = startMin; time + interval <= endMin; time += interval) {
-        int slotStart = time;
-        int slotEnd = time + interval;
-        String slotLabel = _minutesToAmPm(slotStart); 
-
-        // 判断是否与拦截时间冲突
-        bool isBlocked = activeBlocks.any((block) {
-          int bStart = _timeToMinutes(block['startTime']);
-          int bEnd = _timeToMinutes(block['endTime']);
-          return (slotStart < bEnd && slotEnd > bStart);
-        });
-
-        // 判断是否已被别人抢了
-        bool isAlreadyBooked = bookedTimes.contains(slotLabel);
-
-        generatedSlots.add({
-          "time": slotLabel,
-          "isBooked": isBlocked || isAlreadyBooked, 
-        });
-      }
-
-      if (mounted) {
-        setState(() {
-          _timeSlots = generatedSlots;
-          _isLoadingSlots = false;
-        });
-      }
-
-    } catch (e) {
-      debugPrint("Schedule generation error: $e");
+    // 1. 获取常规排班 (复用初始化时已经抓好的数据，不用再查一次 Schedule)
+    var daySchedule = _scheduleByDay[dayOfWeek];
+    if (daySchedule == null) {
       if (mounted) setState(() => _isLoadingSlots = false);
+      return;
+    }
+    String schedStart = daySchedule['startTime']!;
+    String schedEnd = daySchedule['endTime']!;
+
+    // 2. 拦截时间 (请假/开会/特殊设置)
+    List<Map<String, dynamic>> activeBlocks = [];
+    for (var b in _allBlockTimes) {
+      bool isRecurring = b['isRecurring'] ?? false;
+      if ((isRecurring && b['dayOfWeek'] == dayOfWeek) ||
+          (!isRecurring && b['specificDate'] == dateString)) {
+        activeBlocks.add(b);
+      }
+    }
+
+    // 3. 已被别人预约的时间
+    List<String> bookedTimes = _allAppointments
+        .where((d) => d['appointmentDate'] == dateString)
+        .map((d) => d['appointmentTime'] as String)
+        .toList();
+
+    // 4. 切割时间槽 (每 30 分钟切割)
+    int startMin = _timeToMinutes(schedStart);
+    int endMin = _timeToMinutes(schedEnd);
+    int interval = 30; // 30分钟间隔
+
+    // 如果选中的是今天，过了的时间槽也要锁住
+    DateTime now = DateTime.now();
+    bool isToday = DateFormat('yyyy-MM-dd').format(now) == dateString;
+    int nowMin = now.hour * 60 + now.minute;
+
+    List<Map<String, dynamic>> generatedSlots = [];
+
+    for (int time = startMin; time + interval <= endMin; time += interval) {
+      int slotStart = time;
+      int slotEnd = time + interval;
+      String slotLabel = _minutesToAmPm(slotStart);
+
+      // 判断是否与拦截时间冲突
+      bool isBlocked = activeBlocks.any((block) {
+        int bStart = _timeToMinutes(block['startTime']);
+        int bEnd = _timeToMinutes(block['endTime']);
+        return (slotStart < bEnd && slotEnd > bStart);
+      });
+
+      // 判断是否已被别人抢了
+      bool isAlreadyBooked = bookedTimes.contains(slotLabel);
+
+      // 判断是否已经过了现在的时间 (只在选今天时生效)
+      bool isPast = isToday && slotStart <= nowMin;
+
+      generatedSlots.add({
+        "time": slotLabel,
+        "isBooked": isBlocked || isAlreadyBooked || isPast,
+      });
+    }
+
+    if (mounted) {
+      setState(() {
+        _timeSlots = generatedSlots;
+        _isLoadingSlots = false;
+      });
     }
   }
 
@@ -280,15 +408,22 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
           CircleAvatar(
             backgroundColor: primaryGreen.withOpacity(0.1),
             radius: 24,
-            child: Icon(widget.doctor['image'], color: primaryGreen, size: 24),
+            backgroundImage: (widget.doctor['photoURL'] != null && (widget.doctor['photoURL'] as String).isNotEmpty)
+                ? NetworkImage(widget.doctor['photoURL'])
+                : null,
+            child: (widget.doctor['photoURL'] == null || (widget.doctor['photoURL'] as String).isEmpty)
+                ? Icon(widget.doctor['image'], color: primaryGreen, size: 24)
+                : null,
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(widget.doctor['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              Text(widget.doctor['specialty'], style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.doctor['name'], overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(widget.doctor['specialty'], overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+              ],
+            ),
           )
         ],
       ),
@@ -316,15 +451,20 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
           firstDate: DateTime.now(),
           lastDate: DateTime.now().add(const Duration(days: 90)), // 开放3个月预约
           selectableDayPredicate: (DateTime date) {
-            if (_workingDays.isEmpty) return true; 
+            if (_workingDays.isEmpty) return true;
             String dayOfWeek = DateFormat('EEEE').format(date);
-            return _workingDays.contains(dayOfWeek); // 智能变灰拦截
+            if (!_workingDays.contains(dayOfWeek)) return false; // 智能变灰拦截 (非工作日)
+            String dateString = DateFormat('yyyy-MM-dd').format(date);
+            return !_fullyBookedDates.contains(dateString); // 整天满档也灰掉
+          },
+          onDisplayedMonthChanged: (DateTime newMonth) {
+            _computeFullyBookedDatesForMonth(newMonth); // 翻页选月后重新算这个月哪些日期满档
           },
           onDateChanged: (DateTime newDate) {
             setState(() {
               _selectedDate = newDate;
             });
-            _fetchDoctorSchedule(); // 选新日期后重新拉取时间
+            _generateTimeSlotsForSelectedDate(); // 选新日期后重新计算时间槽
           },
         ),
       ),

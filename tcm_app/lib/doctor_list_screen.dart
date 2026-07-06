@@ -43,11 +43,13 @@ class _DoctorListScreenState extends State<DoctorListScreen> {
         DocumentSnapshot userSnap = await FirebaseFirestore.instance.collection('User').doc(uid).get();
 
         String doctorName = "Unknown Doctor";
-        
+        String? photoURL;
+
         if (userSnap.exists) {
           var userData = userSnap.data() as Map<String, dynamic>;
           // 💡 成功从 User 表中读取 username！
           doctorName = userData['username'] ?? "Unknown Doctor";
+          photoURL = userData['photoURL'];
         } else {
           // 如果 User 表里找不到，提供一个后备方案 (Fallback)
           doctorName = adminData['adminName'] ?? "Unknown Doctor";
@@ -60,6 +62,7 @@ class _DoctorListScreenState extends State<DoctorListScreen> {
           "specialty": adminData['department'] ?? "TCM Department", // 👈 Administrator 表的 department
           "description": adminData['description'] ?? "No description available.", // 👈 Administrator 表的 description
           "image": Icons.person_4_rounded,
+          "photoURL": photoURL,
         };
       }).toList();
 
@@ -116,7 +119,12 @@ class _DoctorListScreenState extends State<DoctorListScreen> {
                               CircleAvatar(
                                 radius: 30,
                                 backgroundColor: primaryGreen.withOpacity(0.1),
-                                child: Icon(doctor["image"], color: primaryGreen, size: 30),
+                                backgroundImage: (doctor["photoURL"] != null && (doctor["photoURL"] as String).isNotEmpty)
+                                    ? NetworkImage(doctor["photoURL"])
+                                    : null,
+                                child: (doctor["photoURL"] == null || (doctor["photoURL"] as String).isEmpty)
+                                    ? Icon(doctor["image"], color: primaryGreen, size: 30)
+                                    : null,
                               ),
                               const SizedBox(width: 16),
                               Expanded(

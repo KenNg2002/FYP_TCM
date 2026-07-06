@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_screen.dart';
 import 'rider_main_screen.dart';
 import 'register_screen.dart';
+import 'notification_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -79,7 +80,9 @@ class _LoginScreenState extends State<LoginScreen> {
   // 路由跳转逻辑抽离，方便重用
   void _routeUserBasedOnRole(String? userRole) {
     if (!mounted) return;
-    
+
+    NotificationService.instance.registerToken();
+
     Widget destinationScreen;
     if (userRole == 'DeliveryMan') {
       destinationScreen = RiderMainScreen();
@@ -201,7 +204,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text("Don't have an account? ", style: TextStyle(color: Colors.grey[600])),
+                    Flexible(
+                      child: Text("Don't have an account? ", style: TextStyle(color: Colors.grey[600]), overflow: TextOverflow.ellipsis),
+                    ),
                     GestureDetector(
                       onTap: () {
                         Navigator.push(context, MaterialPageRoute(builder: (context) => const RegisterScreen()));

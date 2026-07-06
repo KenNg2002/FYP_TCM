@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom'; // [新增] 用于跳转页面
 import { signOut } from 'firebase/auth'; // [新增] 用于 Firebase 登出
 import { auth } from '../firebaseConfig'; // [新增] 引入 firebase Auth 实例
+import { registerWebPushToken } from '../notifications';
 
 // 1. 确保路径正确 (它们都在同一个 pages 文件夹下)
 import ClinicAppointments from './ClinicAppointments';
@@ -12,11 +13,13 @@ import DoctorSchedule from './DoctorSchedule';
 import RegisterAdmin from './RegisterAdmin';
 import RegisterDoctor from './RegisterDoctor';
 import RegisterDeliveryMan from './RegisterDeliveryMan';
+import MyProfile from './MyProfile';
+import RefundManagement from './RefundManagement';
 
 // 引入图标
 import {
   LayoutDashboard, Leaf, ShoppingCart, CalendarCheck,
-  Users, LogOut, Search, Bell, CalendarDays, ShieldCheck, Stethoscope, Bike
+  Users, LogOut, Search, Bell, CalendarDays, ShieldCheck, Stethoscope, Bike, UserCircle, Undo2
 } from 'lucide-react';
 
 import { DashboardCharts } from './DashboardCharts';
@@ -34,6 +37,8 @@ const menuConfig: { name: string; icon: any; roles: Array<'Admin' | 'Doctor'> }[
   { name: 'Register Admin', icon: ShieldCheck, roles: ['Admin'] },
   { name: 'Register Doctor', icon: Stethoscope, roles: ['Admin'] },
   { name: 'Register Delivery Man', icon: Bike, roles: ['Admin'] },
+  { name: 'Cancellations & Refunds', icon: Undo2, roles: ['Admin'] },
+  { name: 'My Profile', icon: UserCircle, roles: ['Admin', 'Doctor'] },
 ];
 
 const AdminDashboard: React.FC = () => {
@@ -43,6 +48,10 @@ const AdminDashboard: React.FC = () => {
 
   const [activeMenu, setActiveMenu] = useState(menuItems[0]?.name ?? 'Dashboard');
   const navigate = useNavigate(); // [新增] 初始化跳转
+
+  useEffect(() => {
+    registerWebPushToken();
+  }, []);
 
   // [新增] 处理登出的核心逻辑
   const handleLogout = async () => {
@@ -70,7 +79,7 @@ const AdminDashboard: React.FC = () => {
           <div className="w-8 h-8 bg-green-500 rounded-full mr-3 flex items-center justify-center">
             <Leaf className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold tracking-wider">TCM Admin</span>
+          <span className="text-xl font-bold tracking-wider">SH Wellness</span>
         </div>
 
         <nav className="flex-1 py-6 space-y-2 px-3">
@@ -146,6 +155,8 @@ const AdminDashboard: React.FC = () => {
           {activeMenu === 'Register Admin' && <RegisterAdmin />}
           {activeMenu === 'Register Doctor' && <RegisterDoctor />}
           {activeMenu === 'Register Delivery Man' && <RegisterDeliveryMan />}
+          {activeMenu === 'Cancellations & Refunds' && <RefundManagement />}
+          {activeMenu === 'My Profile' && <MyProfile />}
 
           {activeMenu === 'Users & Riders' && (
             <div className="flex items-center justify-center h-full text-gray-400 text-xl font-medium">

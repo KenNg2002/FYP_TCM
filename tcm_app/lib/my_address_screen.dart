@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'address_utils.dart';
 
 class MyAddressScreen extends StatefulWidget {
   const MyAddressScreen({super.key});
@@ -61,20 +62,28 @@ class _MyAddressScreenState extends State<MyAddressScreen> {
     String? sId,
     required String receiverName,
     required String phoneNo,
-    required String fullAddress,
+    required String addressLine1,
+    required String addressLine2,
+    required String city,
+    required String postcode,
+    required String state,
     required String label,
   }) async {
     setState(() => _isLoading = true);
     try {
       String uid = FirebaseAuth.instance.currentUser!.uid;
-      
+
       CollectionReference addressRef = FirebaseFirestore.instance.collection('shippingaddress');
 
       Map<String, dynamic> data = {
         'customerID': uid, // ⚠️ 修复 1：写入时也严格使用小写 c
         'receiverName': receiverName,
         'phoneNo': phoneNo,
-        'fullAddress': fullAddress,
+        'addressLine1': addressLine1,
+        'addressLine2': addressLine2,
+        'city': city,
+        'postcode': postcode,
+        'state': state,
         'label': label,
       };
 
@@ -105,7 +114,11 @@ class _MyAddressScreenState extends State<MyAddressScreen> {
   void _showAddressForm({Map<String, dynamic>? existingAddress}) {
     TextEditingController nameController = TextEditingController(text: existingAddress?['receiverName'] ?? "");
     TextEditingController phoneController = TextEditingController(text: existingAddress?['phoneNo'] ?? "");
-    TextEditingController addressController = TextEditingController(text: existingAddress?['fullAddress'] ?? "");
+    TextEditingController line1Controller = TextEditingController(text: existingAddress?['addressLine1'] ?? "");
+    TextEditingController line2Controller = TextEditingController(text: existingAddress?['addressLine2'] ?? "");
+    TextEditingController cityController = TextEditingController(text: existingAddress?['city'] ?? "");
+    TextEditingController postcodeController = TextEditingController(text: existingAddress?['postcode'] ?? "");
+    TextEditingController stateController = TextEditingController(text: existingAddress?['state'] ?? "");
     String selectedLabel = existingAddress?['label'] ?? "Home";
 
     showModalBottomSheet(
@@ -144,9 +157,38 @@ class _MyAddressScreenState extends State<MyAddressScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextField(
-                      controller: addressController, 
-                      maxLines: 3, 
-                      decoration: InputDecoration(labelText: "Full Address", filled: true, fillColor: bgGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none))
+                      controller: line1Controller,
+                      decoration: InputDecoration(labelText: "Address Line 1", hintText: "House no., street name", filled: true, fillColor: bgGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none))
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: line2Controller,
+                      decoration: InputDecoration(labelText: "Address Line 2 (Optional)", hintText: "Unit, floor, building", filled: true, fillColor: bgGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none))
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: postcodeController,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(labelText: "Postcode", filled: true, fillColor: bgGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none))
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: cityController,
+                            decoration: InputDecoration(labelText: "City", filled: true, fillColor: bgGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none))
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: stateController,
+                      decoration: InputDecoration(labelText: "State", filled: true, fillColor: bgGray, border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none))
                     ),
                     const SizedBox(height: 16),
                     
@@ -170,13 +212,22 @@ class _MyAddressScreenState extends State<MyAddressScreen> {
                       width: double.infinity, height: 56,
                       child: ElevatedButton(
                         onPressed: () {
-                          if (nameController.text.isNotEmpty && phoneController.text.isNotEmpty && addressController.text.isNotEmpty) {
+                          if (nameController.text.isNotEmpty &&
+                              phoneController.text.isNotEmpty &&
+                              line1Controller.text.isNotEmpty &&
+                              cityController.text.isNotEmpty &&
+                              postcodeController.text.isNotEmpty &&
+                              stateController.text.isNotEmpty) {
                             Navigator.pop(context);
                             _saveAddress(
-                              sId: existingAddress?['sId'], 
+                              sId: existingAddress?['sId'],
                               receiverName: nameController.text.trim(),
                               phoneNo: phoneController.text.trim(),
-                              fullAddress: addressController.text.trim(),
+                              addressLine1: line1Controller.text.trim(),
+                              addressLine2: line2Controller.text.trim(),
+                              city: cityController.text.trim(),
+                              postcode: postcodeController.text.trim(),
+                              state: stateController.text.trim(),
                               label: selectedLabel,
                             );
                           }
@@ -230,7 +281,7 @@ class _MyAddressScreenState extends State<MyAddressScreen> {
                   String label = addr['label'] ?? 'Home';
                   String receiverName = addr['receiverName'] ?? 'Unknown User';
                   String phoneNo = addr['phoneNo'] ?? '-';
-                  String fullAddress = addr['fullAddress'] ?? 'No Address Data';
+                  String fullAddress = formatAddress(addr).isNotEmpty ? formatAddress(addr) : 'No Address Data';
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 16),
