@@ -7,6 +7,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage, firebaseConfig } from '../firebaseConfig';
 import Toast from './Toast';
 import AvatarUpload from './AvatarUpload';
+import { validateName, validateEmail, validatePhone, validatePassword } from '../validation';
 
 const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp_Doctor");
 const secondaryAuth = getAuth(secondaryApp);
@@ -16,22 +17,32 @@ const RegisterDoctor: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   // ⚠️ 统一命名：改为 username, userEmail, userPhoneNum
   const [formData, setFormData] = useState({
-    username: '', 
+    username: '',
     userEmail: '',
     userPhoneNum: '',
     password: '',
     specialty: 'TCM General Practice',
-    description: '' 
+    description: ''
   });
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setSuccessMsg('');
     setErrorMsg('');
+
+    const newErrors: { [key: string]: string } = {};
+    const nameErr = validateName(formData.username); if (nameErr) newErrors.username = nameErr;
+    const emailErr = validateEmail(formData.userEmail); if (emailErr) newErrors.userEmail = emailErr;
+    const phoneErr = validatePhone(formData.userPhoneNum); if (phoneErr) newErrors.userPhoneNum = phoneErr;
+    const passwordErr = validatePassword(formData.password); if (passwordErr) newErrors.password = passwordErr;
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
+
+    setIsLoading(true);
 
     try {
       const userCredential = await createUserWithEmailAndPassword(
@@ -81,6 +92,7 @@ const RegisterDoctor: React.FC = () => {
       setSuccessMsg(`Doctor ${formData.username} has been successfully registered!`);
       setFormData({ username: '', userEmail: '', userPhoneNum: '', password: '', specialty: 'TCM General Practice', description: '' });
       setPhotoFile(null);
+      setErrors({});
 
     } catch (error: any) {
       console.error("Registration Error:", error);
@@ -116,6 +128,7 @@ const RegisterDoctor: React.FC = () => {
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><User className="h-5 w-5 text-gray-400" /></div>
                 <input required type="text" placeholder="e.g., Dr. Sarah Chen" value={formData.username} onChange={(e) => setFormData({...formData, username: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" />
               </div>
+              {errors.username && <p className="text-red-500 text-xs mt-1">{errors.username}</p>}
             </div>
 
             {/* ⚠️ 新增：电话号码输入框 */}
@@ -125,6 +138,7 @@ const RegisterDoctor: React.FC = () => {
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Phone className="h-5 w-5 text-gray-400" /></div>
                 <input required type="tel" placeholder="e.g., 0123456789" value={formData.userPhoneNum} onChange={(e) => setFormData({...formData, userPhoneNum: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" />
               </div>
+              {errors.userPhoneNum && <p className="text-red-500 text-xs mt-1">{errors.userPhoneNum}</p>}
             </div>
 
             {/* 统一为 userEmail */}
@@ -134,14 +148,20 @@ const RegisterDoctor: React.FC = () => {
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="h-5 w-5 text-gray-400" /></div>
                 <input required type="email" placeholder="doctor@tcm.com" value={formData.userEmail} onChange={(e) => setFormData({...formData, userEmail: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" />
               </div>
+              {errors.userEmail && <p className="text-red-500 text-xs mt-1">{errors.userEmail}</p>}
             </div>
 
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Temporary Password</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-gray-400" /></div>
-                <input required type="text" minLength={6} placeholder="Minimum 6 chars" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" />
+                <input required type="text" placeholder="Min 8 chars, upper/lower/number/symbol" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all" />
               </div>
+              {errors.password ? (
+                <p className="text-red-500 text-xs mt-1">{errors.password}</p>
+              ) : (
+                <p className="text-gray-400 text-xs mt-1">At least 8 chars with uppercase, lowercase, number & symbol.</p>
+              )}
             </div>
           </div>
 

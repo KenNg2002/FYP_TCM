@@ -217,7 +217,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // 🔒 验证：密码复杂性 (至少8位，包含字母和数字)
+                // 🔒 验证：密码复杂性 (至少8位，包含大写、小写、数字、特殊符号)
                 _buildFormField(
                   controller: _passwordController,
                   label: "Password",
@@ -226,11 +226,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Please enter a password';
                     if (value.length < 8) return 'Password must be at least 8 characters long';
-                    // 正则表达式：必须至少包含一个字母和一个数字
-                    final passwordRegex = RegExp(r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d\S]{8,}$');
-                    if (!passwordRegex.hasMatch(value)) return 'Password must contain at least one letter and one number';
+                    if (!RegExp(r'[A-Z]').hasMatch(value)) return 'Password must contain an uppercase letter';
+                    if (!RegExp(r'[a-z]').hasMatch(value)) return 'Password must contain a lowercase letter';
+                    if (!RegExp(r'\d').hasMatch(value)) return 'Password must contain a number';
+                    if (!RegExp(r'[!@#$%^&*(),.?":{}|<>_\-+=~`\[\]\\/;' r"']").hasMatch(value)) {
+                      return 'Password must contain a special character';
+                    }
                     return null;
                   },
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 6, left: 4),
+                  child: Text(
+                    'At least 8 chars with uppercase, lowercase, number & symbol.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                 ),
                 const SizedBox(height: 20),
 
