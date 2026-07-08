@@ -8,9 +8,10 @@ import 'notification_service.dart';
 // Import your screen routes
 import 'login_screen.dart';
 
-// 必须是顶层/静态函数：App 被杀掉、只有后台服务在跑的时候，FCM 会在独立的 isolate 里调用它。
-// 这里不需要做任何事——系统在这种情况下会自己把 notification payload 显示成系统通知，
-// 这个 handler 只是用来告诉 FCM「后台消息已处理」，避免报错。
+// Must be a top-level/static function: when the app is killed and only background
+// services are running, FCM invokes this in a separate isolate. No action needed here —
+// the system already displays the notification payload automatically in that case; this
+// handler just tells FCM the background message was handled, to avoid errors.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -26,7 +27,7 @@ void main() async {
   );
   Stripe.publishableKey = 'pk_test_51TmUWCC91fCS0pGOsYhwjyZN1cqNVKgT4OimnkuSASKpbGwjy5tt8z7ncgz3xKcQtMxHxL3ntYWKwf0XSwXiM5t900SWGABtdJ';
 
-  // 3. 推送通知：注册后台消息 handler + 初始化前台本地通知展示
+  // 3. Push notifications: register the background message handler and init foreground local notifications
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await NotificationService.instance.init();
 

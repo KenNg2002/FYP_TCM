@@ -4,7 +4,6 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore"; 
 import { getStorage } from "firebase/storage";
 
-// 这是你专属的真实 Firebase 配置 (从截图提取)
 export const firebaseConfig = {
   apiKey: "AIzaSyCIylXeCQdawH_S5tl3A0KjPzSYYVP0sdQ",
   authDomain: "tcm-db-2e5b3.firebaseapp.com",
@@ -18,10 +17,8 @@ export const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firebase Authentication (用于 Admin 登录)
 export const auth = getAuth(app);
 
-// Initialize Cloud Firestore (后续开发商品和订单管理会用到)
 export const db = getFirestore(app);
 
 export const storage = getStorage(app);

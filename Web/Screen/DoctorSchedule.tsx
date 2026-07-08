@@ -4,13 +4,13 @@ import { User, CalendarDays, Loader2, CheckSquare, ShieldBan, CalendarRange, Che
 import { collection, query, where, getDocs, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 
-// Appointment 的真实 schema 是 mobile app (clinic_appointment_screen.dart) 写入的：
+// The Appointment schema is actually written by the mobile app (clinic_appointment_screen.dart):
 // customerID / adminID / appointmentDate ('yyyy-MM-dd') / appointmentTime ('hh:mm AM/PM') / remark / status
 //
-// 状态流转 (30 分钟一个时段，例如 09:00 - 09:30)：
-// Upcoming (预约默认) --T+15min 还没 Attend--> Overdue (自动) --T+30min 还没处理--> Absent (自动)
-// Upcoming / Overdue --Admin 点 Attend--> Arrived --Admin 点 Mark as Complete--> Completed
-// Overdue --Admin 点 Mark as Absent--> Absent
+// Status flow (30-minute slots, e.g. 09:00 - 09:30):
+// Upcoming (default) --T+15min still not Attended--> Overdue (auto) --T+30min still unresolved--> Absent (auto)
+// Upcoming / Overdue --Admin clicks Attend--> Arrived --Admin clicks Mark as Complete--> Completed
+// Overdue --Admin clicks Mark as Absent--> Absent
 interface RawAppointment {
   id: string;
   customerID: string;
@@ -52,7 +52,7 @@ const toDateString = (d: Date) => {
   return `${y}-${m}-${day}`;
 };
 
-// "09:00 AM" -> 分钟数，方便排序
+// "09:00 AM" -> minutes, for sorting
 const parse12hToMinutes = (label: string): number => {
   try {
     const [time, period] = label.trim().split(' ');
@@ -67,13 +67,13 @@ const parse12hToMinutes = (label: string): number => {
   }
 };
 
-// "09:00" (24小时制，来自 Working Hours / Block Time 的 <input type="time">) -> 分钟数
+// "09:00" (24-hour format, from the Working Hours / Block Time <input type="time">) -> minutes
 const parse24hToMinutes = (time: string): number => {
   const [hStr, mStr] = (time || '0:0').split(':');
   return parseInt(hStr, 10) * 60 + parseInt(mStr || '0', 10);
 };
 
-// 'yyyy-MM-dd' + "09:00 AM" -> 完整的 Date 对象，用来跟 "现在" 比大小
+// 'yyyy-MM-dd' + "09:00 AM" -> a full Date object, for comparing against "now"
 const buildDateTime = (dateStr: string, timeLabel: string): Date => {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(y, (m || 1) - 1, d || 1);
@@ -92,13 +92,13 @@ const DoctorSchedule: React.FC = () => {
   const today = new Date();
   const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [viewMonth, setViewMonth] = useState<Date>(new Date(today.getFullYear(), today.getMonth(), 1));
-  const [now, setNow] = useState<Date>(new Date()); // 每分钟刷新一次，让 Overdue 状态自动变化，不用手动刷新页面
+  const [now, setNow] = useState<Date>(new Date()); // ticks every minute so Overdue status updates automatically without a page refresh
 
-  // ⚠️ 权限控制：从本地缓存读取当前登录者的角色
+  // Read the logged-in user's role from local cache to gate access
   const currentUserRole = localStorage.getItem('adminRole') || '';
   const isDoctor = currentUserRole === 'Doctor';
 
-  // 医生自己的资料 + Block Time：不会被别人改动，一次性拉取就够
+  // Doctor's own profile + block times aren't changed by anyone else, so a one-time fetch is enough
   useEffect(() => {
     if (!isDoctor) return;
     const currentUser = auth.currentUser;
@@ -131,10 +131,10 @@ const DoctorSchedule: React.FC = () => {
     })();
   }, [isDoctor]);
 
-  // 记录已经查过名字的 customerID，避免每次预约列表一有风吹草动就重新查一遍 User 表
+  // Tracks customerIDs we've already resolved a name for, so we don't re-query the User table on every appointment list change
   const resolvedPatientIds = useRef<Set<string>>(new Set());
 
-  // 实时监听：病人随时可能在手机上取消/新增预约，医生这边开着页面要能马上看到
+  // Real-time listener: patients can cancel/create appointments from the mobile app anytime, and the doctor's open page needs to reflect it immediately
   useEffect(() => {
     if (!isDoctor) {
       setIsLoading(false);
@@ -186,7 +186,7 @@ const DoctorSchedule: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // 用来避免同一个 id 在自动检查的同时被重复写入 Firestore
+  // Prevents the same id from being written to Firestore twice concurrently by the auto-check
   const pendingAutoUpdates = useRef<Set<string>>(new Set());
 
   const applyStatusChange = async (id: string, newStatus: string) => {
@@ -202,13 +202,12 @@ const DoctorSchedule: React.FC = () => {
     }
   };
 
-  // Admin 手动操作
   const handleAttend = (id: string) => applyStatusChange(id, 'Arrived');
   const handleMarkAbsent = (id: string) => applyStatusChange(id, 'Absent');
   const handleMarkComplete = (id: string) => applyStatusChange(id, 'Completed');
 
-  // [Trigger Logic] 每分钟 (随 now 变化) 自动检查一次时间轴触发点：
-  // T+15min 还是 Upcoming -> 自动变 Overdue；T+30min (整个时段过完) 还是 Overdue -> 自动变 Absent
+  // Auto-checks the timeline triggers every minute (as `now` changes):
+  // T+15min still Upcoming -> auto Overdue; T+30min (slot fully elapsed) still Overdue -> auto Absent
   useEffect(() => {
     appointments.forEach(a => {
       if (a.status !== 'Upcoming' && a.status !== 'Overdue') return;
@@ -227,7 +226,6 @@ const DoctorSchedule: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [now, appointments]);
 
-  // 算出某一天 (appointments + block times) 的时间轴，按时间排序
   const getTimelineForDate = (d: Date): TimelineItem[] => {
     const dateStr = toDateString(d);
     const dayOfWeek = weekdayNames[d.getDay()];
@@ -258,7 +256,7 @@ const DoctorSchedule: React.FC = () => {
     return [...apptItems, ...blockItems].sort((a, b) => a.sortMinutes - b.sortMinutes);
   };
 
-  // 哪些日期有 appointment，用来在日历上点一个圆点
+  // Dates with at least one appointment, used to render the dot indicator on the calendar
   const datesWithAppointments = new Set(
     appointments.filter(a => a.status !== 'Cancelled').map(a => a.appointmentDate)
   );
@@ -282,7 +280,6 @@ const DoctorSchedule: React.FC = () => {
   const selectedDayDisplay = selectedDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
   const timelineItems = getTimelineForDate(selectedDate);
 
-  // 生成日历格子 (含前后月份的空白填充)
   const firstOfMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
   const daysInMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate();
   const leadingBlanks = firstOfMonth.getDay();
@@ -322,7 +319,6 @@ const DoctorSchedule: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
-          {/* 左边：月历 */}
           <div className="lg:col-span-1 bg-white rounded-[24px] shadow-sm border border-gray-100 p-6">
             <div className="flex items-center justify-between mb-4">
               <button onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))} className="p-2 hover:bg-gray-50 rounded-lg text-gray-500">
@@ -366,7 +362,6 @@ const DoctorSchedule: React.FC = () => {
             </div>
           </div>
 
-          {/* 右边：选中日期的时间轴 */}
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between px-2">
               <h3 className="font-black text-gray-800 text-lg">{selectedDayDisplay}</h3>
@@ -402,7 +397,7 @@ const DoctorSchedule: React.FC = () => {
                 const isDimmed = item.status === 'Completed' || item.status === 'Cancelled' || item.status === 'Absent';
                 const canAct = isSelectedToday;
 
-                // 该 appointment 排定的时间点 (在 selectedDate 那一天)，用来显示迟到了多久
+                // The appointment's scheduled time on selectedDate, used to compute how late it is
                 const scheduledAt = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
                 scheduledAt.setMinutes(item.sortMinutes);
                 const minutesLate = Math.floor((now.getTime() - scheduledAt.getTime()) / 60000);

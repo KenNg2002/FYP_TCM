@@ -22,24 +22,20 @@ class _DoctorListScreenState extends State<DoctorListScreen> {
     _fetchDoctors();
   }
 
-  // 🚀 核心升级：跨表查询 (Administrator + User)
+  // Joins across two collections: Administrator (role/department) + User (name/photo)
   Future<void> _fetchDoctors() async {
     try {
-      // 第一步：从 Administrator 表中找出所有角色为 Doctor 的文档
       QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('Administrator')
           .where('adminRole', isEqualTo: 'Doctor')
           .get();
 
-      // 第二步：遍历这些 Doctor，拿着他们的 ID 去 User 表找真实姓名
+      // For each doctor, look up their real name in the User collection using their ID
       List<Future<Map<String, dynamic>>> fetchPromises = snapshot.docs.map((doc) async {
         var adminData = doc.data() as Map<String, dynamic>;
-        
-        // 假设 User 表的 Document ID 和 Administrator 表是一致的
-        // 如果你的 ID 存在字段里，可以写成: String uid = adminData['adminID'];
-        String uid = adminData['adminID'] ?? doc.id; 
 
-        // 去 User 表拿数据
+        String uid = adminData['adminID'] ?? doc.id;
+
         DocumentSnapshot userSnap = await FirebaseFirestore.instance.collection('User').doc(uid).get();
 
         String doctorName = "Unknown Doctor";
@@ -47,26 +43,23 @@ class _DoctorListScreenState extends State<DoctorListScreen> {
 
         if (userSnap.exists) {
           var userData = userSnap.data() as Map<String, dynamic>;
-          // 💡 成功从 User 表中读取 username！
           doctorName = userData['username'] ?? "Unknown Doctor";
           photoURL = userData['photoURL'];
         } else {
-          // 如果 User 表里找不到，提供一个后备方案 (Fallback)
           doctorName = adminData['adminName'] ?? "Unknown Doctor";
         }
 
-        // 组装最终的数据给 UI 显示
         return {
           "adminID": uid,
-          "name": doctorName, // 👈 这里现在是 User 表里的 username
-          "specialty": adminData['department'] ?? "TCM Department", // 👈 Administrator 表的 department
-          "description": adminData['description'] ?? "No description available.", // 👈 Administrator 表的 description
+          "name": doctorName,
+          "specialty": adminData['department'] ?? "TCM Department",
+          "description": adminData['description'] ?? "No description available.",
           "image": Icons.person_4_rounded,
           "photoURL": photoURL,
         };
       }).toList();
 
-      // 并发执行所有查询，速度极快
+      // Run all lookups concurrently for speed
       List<Map<String, dynamic>> loadedDoctors = await Future.wait(fetchPromises);
 
       if (mounted) {

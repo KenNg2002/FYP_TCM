@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http; // ⚠️ 引入网络请求库
+import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'address_utils.dart';
 import 'ipaddress.dart';
@@ -97,7 +97,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
     });
   }
 
-  // 🚀 终极绝招：真正的一键无感扣款 (One-click Checkout)
+  // One-click checkout — charges the saved card directly, no web redirect
   Future<void> _handleStripePayment() async {
     if (_deliveryMethod != 'Self Pickup' && _selectedAddress == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select a delivery address.'), backgroundColor: Colors.red));
@@ -119,17 +119,16 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
         return;
       }
 
-      // 1. 从列表中找出用户选中的那张卡的 Token 信息
       var selectedCard = _savedPaymentMethods.firstWhere((card) => card['pId'] == _selectedPaymentId || card['id'] == _selectedPaymentId);
-      
+
       String stripeCustomerId = selectedCard['stripeCustomerId'];
       String stripePaymentMethodId = selectedCard['stripePaymentMethodId'];
 
-      // 2. 计算总价并转为 cents (例如 RM 52.50 -> 5250)
+      // Convert total to cents (Stripe requires cents, e.g. RM 52.50 -> 5250)
       double finalTotalAmount = widget.totalAmount + _deliveryFee;
       int amountInCents = (finalTotalAmount * 100).toInt();
 
-      // 3. 呼叫 Node.js 大脑：命令它直接使用这个代币扣款！不再跳网页！
+      // Call the Node.js backend to charge the card directly using the saved token — no web redirect needed
       // final url = Uri.parse('http://10.0.2.2:$serverPort/charge-card'); // Android emulator
       // final url = Uri.parse('http://localhost:$serverPort/charge-card'); // Chrome/web testing
       final url = Uri.parse('$serverBaseUrl/charge-card'); // Physical device (see ipaddress.dart)
@@ -146,10 +145,9 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
 
       final jsonResponse = jsonDecode(response.body);
 
-      // 4. 判断 Node.js 大脑传回的扣款结果
       if (jsonResponse['success'] == true) {
-        // Stripe 已经扣钱了，立刻存入 Firebase 产生订单
-        // 保存 paymentIntentId：以后取消/退款要靠它去呼叫 Stripe 真正退钱
+        // Stripe has already charged the card — immediately create the order in Firebase.
+        // Save paymentIntentId: cancellations/refunds later need it to call Stripe to actually refund the money.
         await _createOrderInFirebase(stripePaymentIntentId: jsonResponse['paymentIntentId']);
       } else {
         throw Exception(jsonResponse['error']);

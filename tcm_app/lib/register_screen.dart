@@ -22,7 +22,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _confirmPasswordController = TextEditingController();
 
   bool _isPasswordVisible = false;
-  // bool _agreeToTerms = false; // 暂时注释掉
+  // bool _agreeToTerms = false;
   bool _isLoading = false;
 
   File? _pickedImage;
@@ -48,10 +48,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> _handleRegister() async {
-    // 🔒 安全升级：触发所有的强验证规则
     if (!_formKey.currentState!.validate()) return;
 
-    // 暂时注释掉 T&C 验证
     /*
     if (!_agreeToTerms) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You must agree to the Terms and Conditions to proceed.'), backgroundColor: Colors.orangeAccent));
@@ -64,7 +62,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     try {
       UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
-        password: _passwordController.text.trim(), // Auth 会自动加密密码
+        password: _passwordController.text.trim(), // Firebase Auth handles password hashing internally
       );
 
       String uid = userCredential.user!.uid;
@@ -134,6 +132,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.asset('assets/icon/logo.png', width: 72, height: 72),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 const Text("Create Account", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF212121))),
                 const SizedBox(height: 8),
                 Text("Join us to balance your lifestyle", style: TextStyle(fontSize: 16, color: Colors.grey[600])),
@@ -178,7 +183,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // 🔒 验证：名字不可为空或全空格
                 _buildFormField(
                   controller: _nameController,
                   label: "Full Name",
@@ -187,7 +191,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // 🔒 验证：标准邮箱格式
                 _buildFormField(
                   controller: _emailController,
                   label: "Email Address",
@@ -202,7 +205,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 20),
                 
-                // 🔒 验证：手机号格式 (支持 +60 格式或普通数字格式)
                 _buildFormField(
                   controller: _phoneController,
                   label: "Phone Number",
@@ -210,14 +212,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   keyboardType: TextInputType.phone,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) return 'Please enter your phone number';
-                    final phoneRegex = RegExp(r'^\+?[0-9]{9,15}$'); // 允许 9-15 位的数字，可选带 +
+                    final phoneRegex = RegExp(r'^\+?[0-9]{9,15}$'); // Allows 9-15 digits, with an optional leading + (e.g. +60)
                     if (!phoneRegex.hasMatch(value.trim())) return 'Please enter a valid phone number (e.g. 0123456789)';
                     return null;
                   },
                 ),
                 const SizedBox(height: 20),
 
-                // 🔒 验证：密码复杂性 (至少8位，包含大写、小写、数字、特殊符号)
                 _buildFormField(
                   controller: _passwordController,
                   label: "Password",
@@ -244,7 +245,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // 🔒 验证：确认密码必须一致
                 _buildFormField(
                   controller: _confirmPasswordController,
                   label: "Confirm Password",
@@ -258,7 +258,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
                 const SizedBox(height: 20),
 
-                // T&C 暂时注释掉
                 /*
                 Row(
                   children: [

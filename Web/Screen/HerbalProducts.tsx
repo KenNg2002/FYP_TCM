@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, AlertTriangle, CheckCircle, X, Loader2 } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebaseConfig'; // 确保路径正确
+import { db } from '../firebaseConfig';
 
-// 定义数据库的数据结构
 interface Product {
   productID: string;
   productName: string;
@@ -15,16 +14,14 @@ interface Product {
 }
 
 const HerbalProducts: React.FC = () => {
-  // 核心状态管理
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // 权限控制：从本地缓存读取当前登录者的角色 (在 Login 页面设置的)
-  // User.userRole 登录后统一是 'Admin'，Admin/Doctor 细分要看 Administrator.adminRole
+
+  // Read the logged-in user's role from local cache (set on the Login page).
+  // User.userRole is always 'Admin' after login; the Admin/Doctor distinction lives in Administrator.adminRole
   const currentUserRole = localStorage.getItem('adminRole') || 'Admin';
   const isAdmin = currentUserRole === 'Admin';
 
-  // 弹窗与表单状态
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -36,16 +33,15 @@ const HerbalProducts: React.FC = () => {
     taskStatus: 'Active',
   });
 
-  // 过滤与搜索状态
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('All Categories');
 
-  // 实时监听商品列表：结账时顾客下单会扣库存 (stockQuantity)，
-  // Admin 这边开着页面也要能马上看到库存变化，不用手动刷新
+  // Real-time listener: checkout deducts stockQuantity, and the open Admin page needs to reflect
+  // stock changes immediately without a manual refresh
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'HerbalProduct'), (snapshot) => {
       const fetchedData = snapshot.docs.map(doc => ({
-        productID: doc.id, // 使用 Firebase 自动生成的 Document ID 作为 productID
+        productID: doc.id, // use Firebase's auto-generated document ID as the productID
         ...doc.data()
       })) as Product[];
       setProducts(fetchedData);
@@ -59,7 +55,6 @@ const HerbalProducts: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. Create / Update: 提交表单保存到 Firebase
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -75,10 +70,9 @@ const HerbalProducts: React.FC = () => {
 
     try {
       if (editingId) {
-        // Update 模式
         await updateDoc(doc(db, 'HerbalProduct', editingId), productPayload);
       } else {
-        // Create 模式：新建文档后，将文档的 ID 作为 productID 存入
+        // On create, write the new doc first, then back-fill its own ID as productID
         const docRef = await addDoc(collection(db, 'HerbalProduct'), productPayload);
         await updateDoc(docRef, { productID: docRef.id });
       }
@@ -92,7 +86,6 @@ const HerbalProducts: React.FC = () => {
     }
   };
 
-  // 3. Delete: 删除商品
   const handleDelete = async (id: string, name: string) => {
     if (window.confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) {
       try {
@@ -107,14 +100,12 @@ const HerbalProducts: React.FC = () => {
     }
   };
 
-  // 打开弹窗进行新建
   const openNewModal = () => {
     setEditingId(null);
     setFormData({ productName: '', description: '', price: '', stockQuantity: '', category: 'Herbal Tea', taskStatus: 'Active' });
     setIsModalOpen(true);
   };
 
-  // 打开弹窗进行编辑
   const openEditModal = (product: Product) => {
     setEditingId(product.productID);
     setFormData({
@@ -130,7 +121,6 @@ const HerbalProducts: React.FC = () => {
 
   const closeModal = () => setIsModalOpen(false);
 
-  // 过滤逻辑
   const filteredProducts = products.filter(p => {
     const matchSearch = p.productName.toLowerCase().includes(searchTerm.toLowerCase()) || p.productID.toLowerCase().includes(searchTerm.toLowerCase());
     const matchCategory = filterCategory === 'All Categories' || p.category === filterCategory;
@@ -140,7 +130,6 @@ const HerbalProducts: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in relative">
       
-      {/* 顶部操作栏 */}
       <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
         <div className="flex space-x-4">
           <input 
@@ -163,7 +152,6 @@ const HerbalProducts: React.FC = () => {
           </select>
         </div>
 
-        {/* 权限控制：只有 Admin 才能看到添加按钮 */}
         {isAdmin && (
           <button 
             onClick={openNewModal}
@@ -175,7 +163,6 @@ const HerbalProducts: React.FC = () => {
         )}
       </div>
 
-      {/* 产品表格 */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {isLoading ? (
           <div className="flex justify-center items-center h-64 text-green-600">
@@ -190,7 +177,6 @@ const HerbalProducts: React.FC = () => {
                 <th className="px-6 py-4">Price (RM)</th>
                 <th className="px-6 py-4">Stock Level</th>
                 <th className="px-6 py-4">Status</th>
-                {/* 权限控制：如果不是Admin，就隐藏 Actions 这一列 */}
                 {isAdmin && <th className="px-6 py-4 text-center">Actions</th>}
               </tr>
             </thead>
@@ -213,7 +199,6 @@ const HerbalProducts: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-2">
                         <span className="font-bold text-gray-700">{item.stockQuantity}</span>
-                        {/* 根据真实库存数量自动计算徽章颜色 */}
                         <StockBadge quantity={item.stockQuantity} />
                       </div>
                     </td>
@@ -223,7 +208,6 @@ const HerbalProducts: React.FC = () => {
                       </span>
                     </td>
                     
-                    {/* 权限控制：只有 Admin 能操作编辑和删除 */}
                     {isAdmin && (
                       <td className="px-6 py-4 text-center space-x-3">
                         <button onClick={() => openEditModal(item)} className="text-blue-600 hover:text-blue-900 bg-blue-50 p-2 rounded-lg transition-colors" title="Edit">
@@ -242,7 +226,6 @@ const HerbalProducts: React.FC = () => {
         )}
       </div>
 
-      {/* Add / Edit 弹窗 */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm">
           <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-2xl p-8 animate-fade-in">
@@ -257,12 +240,10 @@ const HerbalProducts: React.FC = () => {
 
             <form onSubmit={handleSaveProduct} className="space-y-5">
               <div className="grid grid-cols-2 gap-5">
-                {/* 字段 1: Product Name */}
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Product Name</label>
                   <input required type="text" value={formData.productName} onChange={e => setFormData({...formData, productName: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none" />
                 </div>
-                {/* 字段 2: Category */}
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Category</label>
                   <select required value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none">
@@ -272,19 +253,16 @@ const HerbalProducts: React.FC = () => {
                     <option>Equipment</option>
                   </select>
                 </div>
-                {/* 字段 3: Price */}
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Price (RM)</label>
                   <input required type="number" step="0.01" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none" />
                 </div>
-                {/* 字段 4: Stock Quantity */}
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Stock Quantity</label>
                   <input required type="number" min="0" value={formData.stockQuantity} onChange={e => setFormData({...formData, stockQuantity: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none" />
                 </div>
               </div>
 
-              {/* 字段 5: Task Status */}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Task Status</label>
                 <select value={formData.taskStatus} onChange={e => setFormData({...formData, taskStatus: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 outline-none">
@@ -293,13 +271,11 @@ const HerbalProducts: React.FC = () => {
                 </select>
               </div>
 
-              {/* 字段 6: Description */}
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Description</label>
                 <textarea rows={3} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none"></textarea>
               </div>
 
-              {/* 提交按钮 */}
               <div className="flex justify-end pt-4">
                 <button type="button" onClick={closeModal} className="px-6 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-xl mr-4 transition-colors">
                   Cancel
@@ -316,7 +292,6 @@ const HerbalProducts: React.FC = () => {
   );
 };
 
-// 智能库存状态标签：根据你数据库里的 stockQuantity 数字自动变化
 const StockBadge = ({ quantity }: { quantity: number }) => {
   if (quantity === 0) {
     return <span className="flex items-center w-max px-2 py-1 rounded text-xs font-bold bg-red-100 text-red-700"><AlertTriangle className="w-3 h-3 mr-1" /> Out of Stock</span>;

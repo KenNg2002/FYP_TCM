@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserPlus, Mail, Lock, User, Phone, Stethoscope, Loader2, FileText } from 'lucide-react'; // ⚠️ 加入了 Phone icon
+import { UserPlus, Mail, Lock, User, Phone, Stethoscope, Loader2, FileText } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
@@ -19,7 +19,6 @@ const RegisterDoctor: React.FC = () => {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
-  // ⚠️ 统一命名：改为 username, userEmail, userPhoneNum
   const [formData, setFormData] = useState({
     username: '',
     userEmail: '',
@@ -62,9 +61,8 @@ const RegisterDoctor: React.FC = () => {
 
       const batch = writeBatch(db);
 
-      // ⚠️ 完美对齐你的 User Table 字段！
-      // userRole 统一写 'Admin'：网页登录只认 User.userRole === 'Admin'，
-      // Admin/Doctor 的细分权限由 Administrator.adminRole 决定（见下方）。
+      // userRole is always 'Admin' here: web login only checks User.userRole === 'Admin',
+      // the actual Admin/Doctor distinction is decided by Administrator.adminRole (set below).
       const userRef = doc(db, 'User', newDoctorUid);
       batch.set(userRef, {
         userID: newDoctorUid,
@@ -77,7 +75,6 @@ const RegisterDoctor: React.FC = () => {
         photoURL
       });
 
-      // B. 写入 Administrator 表 (这个保持你 Admin 的专属表设计)
       const adminRef = doc(db, 'Administrator', newDoctorUid);
       batch.set(adminRef, {
         adminID: newDoctorUid,
@@ -121,7 +118,6 @@ const RegisterDoctor: React.FC = () => {
           <AvatarUpload value={photoFile} onChange={setPhotoFile} ringColorClass="ring-blue-200" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* 统一为 username */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Doctor's Full Name</label>
               <div className="relative">
@@ -131,7 +127,6 @@ const RegisterDoctor: React.FC = () => {
               {errors.username && <p className="text-red-500 text-xs mt-1">{errors.username}</p>}
             </div>
 
-            {/* ⚠️ 新增：电话号码输入框 */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Phone Number</label>
               <div className="relative">
@@ -141,7 +136,6 @@ const RegisterDoctor: React.FC = () => {
               {errors.userPhoneNum && <p className="text-red-500 text-xs mt-1">{errors.userPhoneNum}</p>}
             </div>
 
-            {/* 统一为 userEmail */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email Address</label>
               <div className="relative">

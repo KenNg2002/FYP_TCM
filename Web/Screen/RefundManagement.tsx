@@ -39,7 +39,7 @@ const RefundManagement: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 下单时曾扣过库存，取消/退款批准后要把这些库存加回去
+  // Stock was deducted when the order was placed, so restore it once the cancellation/refund is approved
   const restoreStock = async (orderId: string) => {
     const itemsSnap = await getDocs(query(collection(db, 'CartItem'), where('orderID', '==', orderId)));
     if (itemsSnap.empty) return;
@@ -54,7 +54,7 @@ const RefundManagement: React.FC = () => {
     await batch.commit();
   };
 
-  // 如果是 Stripe 卡付款，真正呼叫后台退钱；COD 订单没有 stripePaymentIntentId，直接跳过
+  // Only issue an actual Stripe refund for card payments; COD orders have no stripePaymentIntentId, so skip them
   const refundStripeChargeIfNeeded = async (order: OrderData) => {
     if (!order.stripePaymentIntentId) return;
 
@@ -145,7 +145,6 @@ const RefundManagement: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* 通道 A：发货前取消 */}
           <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 p-8">
             <h3 className="font-bold text-gray-800 text-lg flex items-center mb-1">
               <PackageX className="w-5 h-5 mr-2 text-orange-500" /> Cancellation Requests
@@ -177,7 +176,6 @@ const RefundManagement: React.FC = () => {
             )}
           </div>
 
-          {/* 通道 B：送达后售后退款 */}
           <div className="bg-white rounded-[30px] shadow-sm border border-gray-100 p-8">
             <h3 className="font-bold text-gray-800 text-lg flex items-center mb-1">
               <Ban className="w-5 h-5 mr-2 text-red-500" /> Refund Requests
@@ -233,7 +231,6 @@ const RefundManagement: React.FC = () => {
         </>
       )}
 
-      {/* 大图预览 */}
       {selectedProofUrl && (
         <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md z-50 flex justify-center items-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[30px] shadow-2xl p-6 relative animate-zoom-in">
@@ -246,7 +243,6 @@ const RefundManagement: React.FC = () => {
         </div>
       )}
 
-      {/* 驳回理由 */}
       {rejectingOrder && (
         <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md z-50 flex justify-center items-center p-4">
           <div className="bg-white w-full max-w-md rounded-[30px] shadow-2xl p-8 relative animate-zoom-in">

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom'; 
-import { Leaf, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth'; 
 import { doc, getDoc } from 'firebase/firestore'; 
 // IMPORTANT: Ensure 'db' is exported from your firebaseConfig.ts
@@ -107,8 +107,8 @@ const AdminLogin: React.FC = () => {
 
         {/* Branding Header */}
         <div className="flex flex-col items-center mb-10 relative z-10">
-          <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center shadow-md mb-4">
-            <Leaf className="w-8 h-8 text-white" />
+          <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-md mb-4">
+            <img src="/logo.png" alt="SH Wellness" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-2xl font-black text-gray-800 tracking-wide">SH Wellness Staff Portal</h1>
           <p className="text-sm text-gray-400 mt-2 font-medium">Secure Access for Admins & Doctors</p>

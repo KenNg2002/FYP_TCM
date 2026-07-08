@@ -57,7 +57,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  // ⚠️ 核心新增：企业级退出登录逻辑 (带防误触确认弹窗)
   Future<void> _handleLogout(BuildContext context) async {
     bool? confirmLogout = await showDialog<bool>(
       context: context,
@@ -82,12 +81,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ),
     );
 
-    // 如果用户点击了确认退出
     if (confirmLogout == true) {
-      await FirebaseAuth.instance.signOut(); // 清除 Firebase 登录状态
+      await FirebaseAuth.instance.signOut();
       if (!mounted) return;
-      
-      // 清除整个路由栈 (防止按手机返回键又回到这个页面)，并跳转回 LoginScreen
+
+      // Clear the entire route stack so the back button can't return here, then go to LoginScreen
       Navigator.pushAndRemoveUntil(
         context, 
         MaterialPageRoute(builder: (context) => const LoginScreen()), 
@@ -155,7 +153,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
                       const SizedBox(height: 20),
 
-                      // ⚠️ 核心新增：专属的 Logout 按钮，视觉上使用红色警示
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -167,10 +164,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                             elevation: 0,
                           ),
-                          onPressed: () => _handleLogout(context), // 绑定登出逻辑
+                          onPressed: () => _handleLogout(context),
                         ),
                       ),
-                      const SizedBox(height: 40), // 底部留白
+                      const SizedBox(height: 40),
                     ],
                   ),
                 ),

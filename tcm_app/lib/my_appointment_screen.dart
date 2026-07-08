@@ -15,7 +15,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
 
   final Map<String, String> _doctorNameCache = {};
 
-  // 按 adminID 查医生姓名 (User 表优先，Administrator 表兜底)
+  // Look up doctor name by adminID: check the User collection first, fall back to Administrator
   Future<String> _getDoctorName(String adminID) async {
     if (adminID.isEmpty) return "Unknown Doctor";
     if (_doctorNameCache.containsKey(adminID)) return _doctorNameCache[adminID]!;

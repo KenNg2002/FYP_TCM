@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'login_screen.dart'; // 确保你有这个文件，用于退出登录跳转
+import 'login_screen.dart';
 import 'delivery_edit_profile_screen.dart';
 
 class DeliveryProfileScreen extends StatefulWidget {
@@ -16,11 +16,11 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
   String _riderName = "Loading...";
   String _riderId = "";
   
-  // User 表的数据
+  // Fields from the User collection
   String _userEmail = "Loading...";
   String _userPhoneNum = "Loading...";
 
-  // DeliveryMan 表的数据
+  // Fields from the DeliveryMan collection
   String _drivingLicense = "Loading...";
   String _vehiclePlateNum = "Loading...";
   String? _photoURL;
@@ -35,25 +35,21 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
     try {
       User? currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        // 1. 读取 User 表拿基础账号信息
         var userDoc = await FirebaseFirestore.instance.collection('User').doc(currentUser.uid).get();
-        // 2. 读取 DeliveryMan 表拿骑手认证信息
         var deliveryDoc = await FirebaseFirestore.instance.collection('DeliveryMan').doc(currentUser.uid).get();
 
         if (mounted) {
           setState(() {
-            // 解析 User 表
             _riderName = userDoc.data()?['username'] ?? "Unknown Rider";
             _userEmail = userDoc.data()?['userEmail'] ?? "No Email provided";
             _userPhoneNum = userDoc.data()?['userPhoneNum'] ?? "No Phone provided";
 
-            // 解析 DeliveryMan 表
             _drivingLicense = deliveryDoc.data()?['drivingLicense'] ?? "No License Record";
             _vehiclePlateNum = deliveryDoc.data()?['vehiclePlateNum'] ?? "No Vehicle Record";
             _photoURL = userDoc.data()?['photoURL'];
 
-            // 生成一个短 ID 用于 UI 显示
-            _riderId = currentUser.uid.length >= 8 ? currentUser.uid.substring(0, 8).toUpperCase() : "00000000"; 
+            // Short display ID derived from the UID
+            _riderId = currentUser.uid.length >= 8 ? currentUser.uid.substring(0, 8).toUpperCase() : "00000000";
           });
         }
       }
@@ -86,7 +82,6 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
         physics: const BouncingScrollPhysics(),
         child: Column(
           children: [
-            // 顶部头像与基础信息区
             Container(
               width: double.infinity, 
               padding: const EdgeInsets.only(bottom: 30, top: 20),
@@ -116,7 +111,7 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
             ),
             const SizedBox(height: 20),
             
-            // 数据统计卡片 (静态 UI 演示用)
+            // Static demo stat cards - not wired to real data yet
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
@@ -129,7 +124,6 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
             ),
             const SizedBox(height: 30),
             
-            // 详细账号信息列表区
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
@@ -138,7 +132,6 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                   const Text("Account Information", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF4B5563))),
                   const SizedBox(height: 12),
 
-                  // 👉 完美插入你的四个数据库字段
                   _buildProfileMenu(Icons.email_rounded, "Email Address", _userEmail),
                   _buildProfileMenu(Icons.phone_android_rounded, "Phone Number", _userPhoneNum),
                   _buildProfileMenu(Icons.badge_rounded, "Driving License", _drivingLicense),
@@ -173,7 +166,6 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
 
                   const SizedBox(height: 30),
                   
-                  // 退出登录按钮
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(

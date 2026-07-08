@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'checkout_payment_screen.dart'; // ⚠️ 确保引入
+import 'checkout_payment_screen.dart';
 
 class CartCheckoutScreen extends StatefulWidget {
   @override
@@ -80,7 +80,7 @@ class _CartCheckoutScreenState extends State<CartCheckoutScreen> {
                   stream: FirebaseFirestore.instance
                       .collection('CartItem')
                       .where('cartID', isEqualTo: cartId)
-                      .where('orderID', isNull: true) // ⚠️ 终极修复：只显示还没有付款的商品！
+                      .where('orderID', isNull: true) // Only show items not yet paid for
                       .snapshots(),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFF2E7D32)));

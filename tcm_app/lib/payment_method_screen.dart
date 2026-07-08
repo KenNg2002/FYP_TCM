@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:http/http.dart' as http; // ⚠️ 引入网络请求库
+import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'ipaddress.dart';
 
@@ -51,7 +51,7 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
     }
   }
 
-  // 🚀 核心升级：真实调用 Node.js 后端获取 Stripe Token
+  // Calls the Node.js backend to get a real Stripe token
   Future<void> _saveCard({
     required String cardName,
     required String cardNumber,
@@ -64,13 +64,12 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
       String uid = currentUser.uid;
       String email = currentUser.email ?? 'customer@tcm.com';
 
-      // 1. 解析 MM/YY 格式
+      // 1. Parse MM/YY format
       List<String> expiryParts = expiryDate.split('/');
       int expMonth = int.parse(expiryParts[0]);
-      int expYear = int.parse('20${expiryParts[1]}'); // 转成 20XX 年
+      int expYear = int.parse('20${expiryParts[1]}'); // Converts the 2-digit year to 20XX
 
-      // 2. 呼叫我们刚才写的 Node.js 绑卡 API
-      // ⚠️ 如果你用 Android 模拟器，地址是 10.0.2.2；如果是真机/iOS，填你电脑的局域网 IP
+      // Android emulator uses 10.0.2.2; a physical device/iOS needs your computer's LAN IP
       // final url = Uri.parse('http://10.0.2.2:$serverPort/save-card'); // Android emulator
       // final url = Uri.parse('http://localhost:$serverPort/save-card'); // Chrome/web testing
       final url = Uri.parse('$serverBaseUrl/save-card'); // Physical device (see ipaddress.dart)
@@ -90,11 +89,11 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
       final jsonResponse = jsonDecode(response.body);
 
       if (jsonResponse['success'] == true) {
-        // 3. 绑卡成功！把后端传回来的【安全代币】存进 Firebase (绝对不存完整卡号)
+        // Card saved successfully — store the security token returned by the backend in Firebase (never the full card number)
         String stripeCustomerId = jsonResponse['customerId'];
         String stripePaymentMethodId = jsonResponse['paymentMethodId'];
         String last4 = jsonResponse['last4'];
-        String brand = jsonResponse['brand']; // 比如 visa, mastercard
+        String brand = jsonResponse['brand']; // e.g. visa, mastercard
 
         String cardType = brand == 'mastercard' ? 'Mastercard' : 'Visa';
 
@@ -105,8 +104,8 @@ class _PaymentMethodScreenState extends State<PaymentMethodScreen> {
           'last4': last4, 
           'expiryDate': expiryDate, 
           'cardType': cardType,
-          'stripeCustomerId': stripeCustomerId,       // ⚠️ 存入 Stripe 顾客代币
-          'stripePaymentMethodId': stripePaymentMethodId, // ⚠️ 存入 支付代币
+          'stripeCustomerId': stripeCustomerId,
+          'stripePaymentMethodId': stripePaymentMethodId,
           'addedAt': FieldValue.serverTimestamp(),
         };
 

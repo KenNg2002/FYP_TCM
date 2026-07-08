@@ -19,7 +19,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   final Color primaryGreen = const Color(0xFF2E7D32);
   final Color bgGray = const Color(0xFFF4F6F8);
 
-  // 骑手已经出发或药已经备好，取消会造成诊所/骑手的损失，锁死取消按钮
+  // Once the rider is out or the order is ready for pickup, canceling would cost the clinic/rider — lock the cancel button
   static const List<String> _lockedStatuses = ['Assigned', 'Delivering', 'ReadyForPickup'];
 
   static const List<String> _cancelReasons = [
@@ -46,12 +46,12 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     super.dispose();
   }
 
-  // 用实时监听而不是一次性 get()：这样 Admin 那边一 approve/reject，
-  // 这个页面马上就能看到最新状态，不用用户自己退出再进来刷新。
+  // Use a live listener instead of a one-off get(): as soon as Admin approves/rejects,
+  // this screen reflects the latest status immediately, without the user needing to exit and re-enter to refresh.
   void _listenToOrders() {
     String uid = FirebaseAuth.instance.currentUser?.uid ?? "TEST_CUSTOMER_001";
 
-    // 不用 orderBy，避免要求建立复合索引；改成拿回来后本地排序
+    // Avoid orderBy to sidestep requiring a composite index; sort locally after fetching instead
     _orderSubscription = FirebaseFirestore.instance
         .collection('Order')
         .where('customerID', isEqualTo: uid)
@@ -65,7 +65,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
         return tB.compareTo(tA);
       });
 
-      // 订单里的商品清单不会变，只补拉还没缓存过的新订单，避免每次更新都重复查询
+      // Order items never change, so only fetch items for orders not yet cached, avoiding repeat queries on every update
       final uncachedIds = orders.map((o) => o.id).where((id) => !_itemsByOrder.containsKey(id));
       await Future.wait(uncachedIds.map((orderId) async {
         QuerySnapshot itemSnap = await FirebaseFirestore.instance
@@ -96,7 +96,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     }).join(", ");
   }
 
-  // ================= 通道 A：发货前取消 =================
+  // ================= Path A: Cancel before shipping =================
 
   void _showCancelDialog(String orderId) {
     String? selectedReason;
@@ -164,7 +164,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     }
   }
 
-  // ================= 通道 B：送达后售后退款 =================
+  // ================= Path B: Post-delivery refund =================
 
   void _showRefundDialog(String orderId) {
     TextEditingController reasonCtrl = TextEditingController();

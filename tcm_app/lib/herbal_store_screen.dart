@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
-import 'package:firebase_auth/firebase_auth.dart'; // [新增] 用于获取当前用户
+import 'package:firebase_auth/firebase_auth.dart';
 import 'cart_checkout_screen.dart'; 
 
 class HerbalStoreScreen extends StatefulWidget {
@@ -90,21 +90,19 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
     );
   }
 
-  // ==================== 核心逻辑：添加到 Firebase 购物车 ====================
+  // ==================== Add to Firebase cart ====================
   Future<void> _addToCartInFirebase(Map<String, dynamic> product, String productId) async {
-    // 1. 获取当前用户 ID (和 Checkout 页面的逻辑保持一致)
+    // Fallback test ID kept consistent with the checkout page's logic
     User? currentUser = FirebaseAuth.instance.currentUser;
-    String uid = currentUser?.uid ?? "TEST_CUSTOMER_001"; 
-    String cartId = uid; 
+    String uid = currentUser?.uid ?? "TEST_CUSTOMER_001";
+    String cartId = uid;
 
-    // 2. 提取商品基本信息
     String name = product['productName'] ?? 'Unknown Product';
     double price = (product['price'] ?? 0).toDouble();
     int stock = product['stockQuantity'] ?? 0;
     String status = product['taskStatus'] ?? 'Active';
 
     try {
-      // 3. 检查：购物车里是不是已经有这个商品了？
       var existingItemQuery = await FirebaseFirestore.instance
           .collection('CartItem')
           .where('cartID', isEqualTo: cartId)
@@ -114,16 +112,16 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
           .get();
 
       if (existingItemQuery.docs.isNotEmpty) {
-        // 【情况 A】：购物车里已经有了这个商品 -> 更新数量和小计
+        // Case A: item already in cart - update quantity and subtotal
         var existingDoc = existingItemQuery.docs.first;
         int currentQty = existingDoc['quantity'] ?? 0;
 
-        // 防超卖逻辑：如果购物车里的数量已经等于库存上限，不给加了！
+        // Anti-oversell guard: don't allow adding more once quantity hits the stock limit
         if (currentQty >= stock) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Cannot add more. Only $stock left in stock!'), backgroundColor: Colors.orange)
           );
-          return; // 终止执行
+          return;
         }
 
         int newQty = currentQty + 1;
@@ -133,7 +131,7 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
         });
 
       } else {
-        // 【情况 B】：购物车里没有这个商品 -> 新建一条记录
+        // Case B: item not in cart yet - create a new record
         await FirebaseFirestore.instance.collection('CartItem').add({
           'cartID': cartId,
           'productID': productId,
@@ -142,12 +140,11 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
           'subtotal': price,
           'stockQuantity': stock,
           'taskStatus': status,
-          'orderID': null, // 还没结账，所以是 null
+          'orderID': null, // null means not checked out yet
         });
       }
 
-      // 4. 更新右上角的小角标 UI，并弹出成功提示
-      setState(() { _cartItemCount++; }); 
+      setState(() { _cartItemCount++; });
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -168,7 +165,7 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
   }
   // =========================================================================
 
-  // ==================== UI 组件 ====================
+  // ==================== UI Components ====================
 
   Widget _buildEmptyState(String message) {
     return Center(
@@ -185,18 +182,17 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
 
   Widget _buildCartAction() {
     User? currentUser = FirebaseAuth.instance.currentUser;
-    // 如果还没登录，默认用测试 ID，和你在其他地方的逻辑保持一致
+    // Fallback test ID, kept consistent with the fallback used elsewhere
     String cartId = currentUser?.uid ?? "TEST_CUSTOMER_001";
 
-    // ⚠️ 使用 StreamBuilder 实时监听未结账的商品数量
+    // StreamBuilder keeps the badge count live as cart items change
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('CartItem')
           .where('cartID', isEqualTo: cartId)
-          .where('orderID', isNull: true) // 核心：只统计没结账的
+          .where('orderID', isNull: true) // Only count items not yet checked out
           .snapshots(),
       builder: (context, snapshot) {
-        // 自动计算当前有多少个未结账商品
         int count = 0;
         if (snapshot.hasData) {
           count = snapshot.data!.docs.length;
@@ -211,7 +207,7 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => CartCheckoutScreen()));
               },
             ),
-            if (count > 0) // 只有大于 0 时才显示红点
+            if (count > 0)
               Positioned(
                 top: 8,
                 right: 6,
@@ -371,7 +367,6 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
                     ),
                     
                     GestureDetector(
-                      // ⚠️ 关键修改：点击时执行新写的 Firebase 写入逻辑
                       onTap: isOutOfStock ? null : () => _addToCartInFirebase(product, productId),
                       
                       child: Container(

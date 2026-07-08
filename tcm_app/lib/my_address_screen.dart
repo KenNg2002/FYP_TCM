@@ -28,7 +28,7 @@ class _MyAddressScreenState extends State<MyAddressScreen> {
     try {
       String uid = FirebaseAuth.instance.currentUser!.uid;
       
-      // ⚠️ 修复 1：严格使用小写 c 的 'customerID' 进行匹配
+      // Must match using the lowercase-c field name 'customerID'
       QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('shippingaddress') 
           .where('customerID', isEqualTo: uid)
@@ -50,7 +50,6 @@ class _MyAddressScreenState extends State<MyAddressScreen> {
       debugPrint("Error fetching addresses: $e");
       if (mounted) {
         setState(() => _isLoading = false);
-        // 如果有权限问题或其他错误，弹窗提示
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading addresses: $e'), backgroundColor: Colors.redAccent)
         );
@@ -76,7 +75,7 @@ class _MyAddressScreenState extends State<MyAddressScreen> {
       CollectionReference addressRef = FirebaseFirestore.instance.collection('shippingaddress');
 
       Map<String, dynamic> data = {
-        'customerID': uid, // ⚠️ 修复 1：写入时也严格使用小写 c
+        'customerID': uid, // Keep the lowercase-c field name consistent on write too
         'receiverName': receiverName,
         'phoneNo': phoneNo,
         'addressLine1': addressLine1,
@@ -276,8 +275,7 @@ class _MyAddressScreenState extends State<MyAddressScreen> {
                 itemBuilder: (context, index) {
                   final addr = _addressList[index];
 
-                  // ⚠️ 修复 2：强大的防空指针保护 (Null Safety)
-                  // 这样即使你在数据库里少填了某个字段，也不会导致白屏崩溃
+                  // Defensive null fallbacks so a missing field in Firestore doesn't crash to a blank screen
                   String label = addr['label'] ?? 'Home';
                   String receiverName = addr['receiverName'] ?? 'Unknown User';
                   String phoneNo = addr['phoneNo'] ?? '-';

@@ -88,7 +88,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     try {
       String uid = FirebaseAuth.instance.currentUser!.uid;
 
-      // 0. 如有选择新照片，先上传到 Firebase Storage
       String? photoURL = widget.currentPhotoURL;
       if (_pickedImage != null) {
         final storageRef = FirebaseStorage.instance.ref().child('profile_photos/$uid.jpg');
@@ -96,16 +95,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         photoURL = await storageRef.getDownloadURL();
       }
 
-      // 1. Update basic fields in 'User' document (修复：完全对齐 ER 数据库图里的命名)
       await FirebaseFirestore.instance.collection('User').doc(uid).update({
-        'username': _nameController.text.trim(),       // 之前这里错写成了 fullName
-        'userPhoneNum': _phoneController.text.trim(),  // 之前这里错写成了 phoneNo
+        'username': _nameController.text.trim(),
+        'userPhoneNum': _phoneController.text.trim(),
         'photoURL': photoURL,
       });
 
-      // 2. Update specific fields in 'Customer' document
       await FirebaseFirestore.instance.collection('Customer').doc(uid).set({
-        'customerID': uid, // 确保与你截图里的 CustomerID / customerID 大小写一致
+        'customerID': uid, // Field name casing must match 'customerID' exactly (case-sensitive)
         'dateOfBirth': _dobController.text.trim(),
       }, SetOptions(merge: true));
 
@@ -114,8 +111,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Profile updated!'), backgroundColor: primaryGreen));
       
-      // 这里带着 true 返回上一页，就会触发 user_profile_screen 里的 _fetchUserData() 重新加载！
-      Navigator.pop(context, true); 
+      // Returning true here triggers user_profile_screen's _fetchUserData() to reload
+      Navigator.pop(context, true);
 
     } catch (e) {
       if (!mounted) return;

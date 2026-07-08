@@ -17,20 +17,18 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
   final Color primaryGreen = const Color(0xFF2E7D32);
   final TextEditingController _remarkController = TextEditingController();
 
-  // 日期与时间状态
   DateTime? _selectedDate;
   List<Map<String, dynamic>> _timeSlots = [];
   String _selectedTimeSlot = "";
-  
-  // 医生工作日预查列表
+
   List<String> _workingDays = [];
-  // dayOfWeek -> {startTime, endTime}，初始化时一次抓好，避免每次选日期都重新查 Schedule
+  // dayOfWeek -> {startTime, endTime}; fetched once at init so we don't re-query Schedule every time a date is picked
   Map<String, Map<String, String>> _scheduleByDay = {};
-  // 当前日历显示月份里，整天都没名额的日期 ('yyyy-MM-dd')
+  // Dates in the currently viewed month with zero available slots, formatted 'yyyy-MM-dd'
   Set<String> _fullyBookedDates = {};
 
-  // 🚀 实时数据：其他病人随时可能抢订，医生也可能随时新增 Block Time，
-  // 用 Stream 而不是一次性 get()，这样这个页面开着的时候数据不会过期
+  // Live data: other patients can book at any time and the doctor can add block times at any time,
+  // so we use streams instead of a one-off get() to keep this screen's data from going stale while it's open.
   StreamSubscription<QuerySnapshot>? _appointmentSubscription;
   StreamSubscription<QuerySnapshot>? _blockTimeSubscription;
   List<Map<String, dynamic>> _allAppointments = [];
@@ -55,11 +53,11 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     super.dispose();
   }
 
-  // 🚀 初始化应用：查医生工作日 -> 自动选中最近一天 -> 订阅实时预约/拦截时间数据
+  // Initialize: fetch the doctor's working days -> auto-select the nearest available day -> subscribe to live appointment/block-time data
   Future<void> _initializeApp() async {
     await _fetchWorkingDays();
 
-    // 自动寻找未来 90 天里，医生最近的第一个上班日
+    // Find the doctor's nearest working day within the next 90 days
     DateTime initial = DateTime.now();
     if (_workingDays.isNotEmpty) {
       for (int i = 0; i < 90; i++) {
@@ -76,7 +74,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     _listenToLiveBookingData();
   }
 
-  // 实时监听这个医生的 Appointment + BlockTime，任何一边一有变化就重新计算可选时段
+  // Live-listen to this doctor's Appointment + BlockTime; recompute available slots whenever either changes
   void _listenToLiveBookingData() {
     String adminID = widget.doctor['adminID'];
 
@@ -106,7 +104,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     if (_isInitializing) setState(() => _isInitializing = false);
   }
 
-  // 查询 Schedule 表找出医生每周哪几天有排班，顺便把每天的上下班时间也缓存起来
+  // Query the Schedule collection for the doctor's working days, and cache each day's start/end time along the way
   Future<void> _fetchWorkingDays() async {
     try {
       var snap = await FirebaseFirestore.instance.collection('Schedule')
@@ -126,8 +124,8 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     }
   }
 
-  // 🚀 算出当前显示月份里，哪些日期整天都没有名额了 (用来在日历上灰掉)
-  // 数据来自实时监听的 _allAppointments / _allBlockTimes，不用再单独查一次 Firestore
+  // Compute which dates in the currently displayed month are fully booked (so the calendar can gray them out).
+  // Uses the live-streamed _allAppointments / _allBlockTimes data — no extra Firestore query needed.
   void _computeFullyBookedDatesForMonth(DateTime month) {
     _viewedMonth = month;
     if (_workingDays.isEmpty) return;
@@ -166,7 +164,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     for (DateTime d = rangeFrom; !d.isAfter(rangeTo); d = d.add(const Duration(days: 1))) {
       String dayOfWeek = DateFormat('EEEE').format(d);
       var daySchedule = _scheduleByDay[dayOfWeek];
-      if (daySchedule == null) continue; // 本来就没排班，日历那边已经会灰掉
+      if (daySchedule == null) continue; // No schedule for this day — the calendar already grays it out
 
       String dateString = DateFormat('yyyy-MM-dd').format(d);
       int startMin = _timeToMinutes(daySchedule['startTime']!);
@@ -210,7 +208,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     if (mounted) setState(() => _fullyBookedDates = fullyBooked);
   }
 
-  // 生成可用时间槽：同样改用实时数据 _allAppointments / _allBlockTimes 现算，不用再查 Firestore
+  // Generate available time slots — computed from the live _allAppointments / _allBlockTimes data, no extra Firestore query
   void _generateTimeSlotsForSelectedDate() {
     if (!mounted) return;
     setState(() {
@@ -222,7 +220,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     String dayOfWeek = DateFormat('EEEE').format(_selectedDate!);
     String dateString = DateFormat('yyyy-MM-dd').format(_selectedDate!);
 
-    // 1. 获取常规排班 (复用初始化时已经抓好的数据，不用再查一次 Schedule)
+    // 1. Get the regular schedule (reuses data fetched at init — no need to query Schedule again)
     var daySchedule = _scheduleByDay[dayOfWeek];
     if (daySchedule == null) {
       if (mounted) setState(() => _isLoadingSlots = false);
@@ -231,7 +229,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     String schedStart = daySchedule['startTime']!;
     String schedEnd = daySchedule['endTime']!;
 
-    // 2. 拦截时间 (请假/开会/特殊设置)
+    // 2. Block times (leave, meetings, other exceptions)
     List<Map<String, dynamic>> activeBlocks = [];
     for (var b in _allBlockTimes) {
       bool isRecurring = b['isRecurring'] ?? false;
@@ -241,18 +239,18 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
       }
     }
 
-    // 3. 已被别人预约的时间
+    // 3. Times already booked by other patients
     List<String> bookedTimes = _allAppointments
         .where((d) => d['appointmentDate'] == dateString)
         .map((d) => d['appointmentTime'] as String)
         .toList();
 
-    // 4. 切割时间槽 (每 30 分钟切割)
+    // 4. Slice into time slots (30-minute intervals)
     int startMin = _timeToMinutes(schedStart);
     int endMin = _timeToMinutes(schedEnd);
-    int interval = 30; // 30分钟间隔
+    int interval = 30;
 
-    // 如果选中的是今天，过了的时间槽也要锁住
+    // If today is selected, also lock out time slots that have already passed
     DateTime now = DateTime.now();
     bool isToday = DateFormat('yyyy-MM-dd').format(now) == dateString;
     int nowMin = now.hour * 60 + now.minute;
@@ -264,17 +262,14 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
       int slotEnd = time + interval;
       String slotLabel = _minutesToAmPm(slotStart);
 
-      // 判断是否与拦截时间冲突
       bool isBlocked = activeBlocks.any((block) {
         int bStart = _timeToMinutes(block['startTime']);
         int bEnd = _timeToMinutes(block['endTime']);
         return (slotStart < bEnd && slotEnd > bStart);
       });
 
-      // 判断是否已被别人抢了
       bool isAlreadyBooked = bookedTimes.contains(slotLabel);
 
-      // 判断是否已经过了现在的时间 (只在选今天时生效)
       bool isPast = isToday && slotStart <= nowMin;
 
       generatedSlots.add({
@@ -307,7 +302,6 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     return "$hh:$mm $ampm";
   }
 
-  // 写入数据库
   Future<void> _confirmBooking() async {
     setState(() => _isConfirming = true);
     try {
@@ -364,7 +358,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
 
                       const Text("Select Date", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 16),
-                      _buildCalendarSelector(), // 原生完整日历组件
+                      _buildCalendarSelector(),
 
                       const SizedBox(height: 32),
 
@@ -372,7 +366,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
                       const SizedBox(height: 16),
                       _isLoadingSlots 
                           ? Center(child: CircularProgressIndicator(color: primaryGreen))
-                          : _buildTimeGrid(), // 3列网格大按钮
+                          : _buildTimeGrid(),
 
                       const SizedBox(height: 32),
 
@@ -430,7 +424,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
     );
   }
 
-  // 🚀 完整日历视图 (翻页选月，智能置灰不可用日期)
+  // Full calendar view — supports paging between months, with unavailable dates grayed out automatically
   Widget _buildCalendarSelector() {
     return Container(
       decoration: BoxDecoration(
@@ -449,29 +443,29 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
         child: CalendarDatePicker(
           initialDate: _selectedDate ?? DateTime.now(),
           firstDate: DateTime.now(),
-          lastDate: DateTime.now().add(const Duration(days: 90)), // 开放3个月预约
+          lastDate: DateTime.now().add(const Duration(days: 90)), // Bookings open up to ~3 months ahead
           selectableDayPredicate: (DateTime date) {
             if (_workingDays.isEmpty) return true;
             String dayOfWeek = DateFormat('EEEE').format(date);
-            if (!_workingDays.contains(dayOfWeek)) return false; // 智能变灰拦截 (非工作日)
+            if (!_workingDays.contains(dayOfWeek)) return false;
             String dateString = DateFormat('yyyy-MM-dd').format(date);
-            return !_fullyBookedDates.contains(dateString); // 整天满档也灰掉
+            return !_fullyBookedDates.contains(dateString);
           },
           onDisplayedMonthChanged: (DateTime newMonth) {
-            _computeFullyBookedDatesForMonth(newMonth); // 翻页选月后重新算这个月哪些日期满档
+            _computeFullyBookedDatesForMonth(newMonth);
           },
           onDateChanged: (DateTime newDate) {
             setState(() {
               _selectedDate = newDate;
             });
-            _generateTimeSlotsForSelectedDate(); // 选新日期后重新计算时间槽
+            _generateTimeSlotsForSelectedDate();
           },
         ),
       ),
     );
   }
 
-  // 🚀 舒适大字体：3 列排版 30 分钟时间网格
+  // 3-column grid of large, easy-to-tap 30-minute time slots
   Widget _buildTimeGrid() {
     if (_timeSlots.isEmpty) {
       return Container(
@@ -487,8 +481,8 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
       shrinkWrap: true, 
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3, // 恢复3列排版让按钮变宽
-        childAspectRatio: 2.2, // 调整比例更饱满
+        crossAxisCount: 3,
+        childAspectRatio: 2.2,
         crossAxisSpacing: 12, 
         mainAxisSpacing: 12,  
       ),
@@ -511,7 +505,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
             child: Text(
               slot["time"],
               style: TextStyle(
-                fontSize: 14, // 字体放大
+                fontSize: 14,
                 color: isBooked ? Colors.grey[400] : (isSelected ? Colors.white : const Color(0xFF4B5563)),
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
                 decoration: isBooked ? TextDecoration.lineThrough : null, 

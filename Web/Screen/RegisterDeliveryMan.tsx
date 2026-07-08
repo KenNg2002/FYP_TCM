@@ -9,7 +9,7 @@ import Toast from './Toast';
 import AvatarUpload from './AvatarUpload';
 import { validateName, validateEmail, validatePhone, validatePassword } from '../validation';
 
-// 🔥 创建副引擎，专门用于静默注册，防止 Admin 当前账号被踢出
+// Secondary app instance used only for silent registration, so the current Admin session isn't kicked out
 const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp_Delivery");
 const secondaryAuth = getAuth(secondaryApp);
 
@@ -47,16 +47,14 @@ const RegisterDeliveryMan: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // 1. 使用副引擎在 Firebase Auth 创建账号
       const userCredential = await createUserWithEmailAndPassword(
-        secondaryAuth, 
-        formData.userEmail, 
+        secondaryAuth,
+        formData.userEmail,
         formData.password
       );
-      
+
       const newDeliveryManUid = userCredential.user.uid;
 
-      // 1b. 如有选择照片，先上传到 Firebase Storage
       let photoURL: string | null = null;
       if (photoFile) {
         const photoRef = ref(storage, `profile_photos/${newDeliveryManUid}.jpg`);
@@ -64,13 +62,12 @@ const RegisterDeliveryMan: React.FC = () => {
         photoURL = await getDownloadURL(photoRef);
       }
 
-      // 2. 准备 Batch Write (批处理)，同时写入两个 Table
+      // Batch write so both tables are written atomically
       const batch = writeBatch(db);
 
-      // A. 写入 User Table
       const userRef = doc(db, 'User', newDeliveryManUid);
       batch.set(userRef, {
-        userID: newDeliveryManUid, // 与 Document ID 保持一致
+        userID: newDeliveryManUid, // matches the document ID
         username: formData.username,
         userEmail: formData.userEmail,
         userPhoneNum: formData.userPhoneNum,
@@ -80,22 +77,18 @@ const RegisterDeliveryMan: React.FC = () => {
         photoURL
       });
 
-      // B. 写入 DeliveryMan Table
       const deliveryManRef = doc(db, 'DeliveryMan', newDeliveryManUid);
       batch.set(deliveryManRef, {
-        deliverymanID: newDeliveryManUid, // 关联 User 表的主键
-        vehiclePlateNum: formData.vehiclePlateNum.toUpperCase(), // 车牌号自动转大写
+        deliverymanID: newDeliveryManUid, // foreign key to the User table
+        vehiclePlateNum: formData.vehiclePlateNum.toUpperCase(),
         drivingLicense: formData.drivingLicense,
-        currentAvailability: 'Offline' // 刚注册完默认不接单，等他自己用手机 App 上线
+        currentAvailability: 'Offline' // defaults offline until the rider goes online from the mobile app
       });
 
-      // 执行所有写入操作
       await batch.commit();
 
-      // 3. 登出副引擎
       await signOut(secondaryAuth);
 
-      // 4. UI 提示并清空表单
       setSuccessMsg(`Delivery Man ${formData.username} has been successfully registered!`);
       setFormData({ username: '', userEmail: '', password: '', userPhoneNum: '', vehiclePlateNum: '', drivingLicense: '' });
       setPhotoFile(null);
@@ -118,7 +111,6 @@ const RegisterDeliveryMan: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in relative">
       
-      {/* 顶部标题区 */}
       <div className="bg-white p-8 rounded-[30px] shadow-sm border border-gray-100">
         <h2 className="text-2xl font-black text-gray-800 flex items-center">
           <Bike className="w-7 h-7 mr-3 text-orange-500" /> 
@@ -129,7 +121,6 @@ const RegisterDeliveryMan: React.FC = () => {
         </p>
       </div>
 
-      {/* 注册表单 */}
       <div className="bg-white p-8 rounded-[30px] shadow-sm border border-gray-100 max-w-3xl">
         
         {successMsg && <Toast type="success" message={successMsg} onDismiss={() => setSuccessMsg('')} />}
@@ -140,7 +131,6 @@ const RegisterDeliveryMan: React.FC = () => {
           <AvatarUpload value={photoFile} onChange={setPhotoFile} ringColorClass="ring-orange-200" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* 全名 */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Full Name</label>
               <div className="relative">
@@ -150,7 +140,6 @@ const RegisterDeliveryMan: React.FC = () => {
               {errors.username && <p className="text-red-500 text-xs mt-1">{errors.username}</p>}
             </div>
 
-            {/* 电话号码 */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Phone Number</label>
               <div className="relative">
@@ -160,7 +149,6 @@ const RegisterDeliveryMan: React.FC = () => {
               {errors.userPhoneNum && <p className="text-red-500 text-xs mt-1">{errors.userPhoneNum}</p>}
             </div>
 
-            {/* 邮箱 */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email Address</label>
               <div className="relative">
@@ -170,7 +158,6 @@ const RegisterDeliveryMan: React.FC = () => {
               {errors.userEmail && <p className="text-red-500 text-xs mt-1">{errors.userEmail}</p>}
             </div>
 
-            {/* 密码 */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Temporary Password</label>
               <div className="relative">
@@ -186,7 +173,6 @@ const RegisterDeliveryMan: React.FC = () => {
           </div>
 
           <div className="border-t border-gray-100 pt-6 mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* 车牌号 */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Vehicle Plate Number</label>
               <div className="relative">
@@ -196,7 +182,6 @@ const RegisterDeliveryMan: React.FC = () => {
               {errors.vehiclePlateNum && <p className="text-red-500 text-xs mt-1">{errors.vehiclePlateNum}</p>}
             </div>
 
-            {/* 驾驶证号码 */}
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Driving License ID</label>
               <div className="relative">

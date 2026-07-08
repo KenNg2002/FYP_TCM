@@ -58,10 +58,11 @@ class DefaultFirebaseOptions {
     storageBucket: 'tcm-db-2e5b3.firebasestorage.app',
   );
 
-  // ⚠️ iOS/macOS 还没有配对：这个 project (tcm-db-2e5b3) 目前没有对应的
-  // GoogleService-Info.plist / iOS Firebase App。需要的话请运行
-  // `flutterfire configure --project=tcm-db-2e5b3` 并勾选 ios 平台来生成真实的
-  // apiKey/appId，不要用其他项目的凭证顶替，否则会重现"连错数据库"的问题。
+  // iOS/macOS are not actually configured yet: this project (tcm-db-2e5b3) has no
+  // matching GoogleService-Info.plist / iOS Firebase App. If needed, run
+  // `flutterfire configure --project=tcm-db-2e5b3` and select the ios platform to
+  // generate real apiKey/appId values. Do not substitute credentials from another
+  // project, or it will reproduce the "connected to the wrong database" bug.
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCi9tnuMROsnPnNWb73lIH2vUulK6L7BEM',
     appId: '1:689825329356:android:b2913131c4932b11b69269',

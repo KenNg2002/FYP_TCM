@@ -11,7 +11,7 @@ interface Schedule {
   endTime: string;
 }
 
-// 用于将星期按逻辑顺序排序，而不是字母顺序
+// Sort days in logical week order rather than alphabetically
 const dayOrder: { [key: string]: number } = {
   'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 7
 };
@@ -28,16 +28,14 @@ const DoctorWorkingHours: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [adminID, setAdminID] = useState<string>('');
 
-  // 表单状态 (常驻左边，不再用弹窗)
-  const [editingId, setEditingId] = useState<string | null>(null); // 记录当前正在编辑的 ID
-  const [errorMsg, setErrorMsg] = useState<string>(''); // 用于显示重复添加的错误信息
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string>('');
   const [form, setForm] = useState(emptyForm);
 
   useEffect(() => {
     fetchWorkingHours();
   }, []);
 
-  // 1. 读取数据
   const fetchWorkingHours = async () => {
     setIsLoading(true);
     try {
@@ -78,34 +76,30 @@ const DoctorWorkingHours: React.FC = () => {
     setErrorMsg('');
   };
 
-  // 2. 保存数据 (Create & Update) + 防重验证
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg(''); // 每次提交前先清空错误
+    setErrorMsg('');
 
-    // 核心逻辑：检查是否 Duplicate (不允许同一天有两套排班)
-    // 逻辑：在现有的 schedules 里找，有没有跟表单选的 dayOfWeek 一样的？
-    // 注意：如果是编辑模式 (editingId 存在)，需要排除掉自己本身，不然没法保存修改后的时间。
+    // Only one schedule allowed per day; when editing, exclude the record
+    // being edited itself, otherwise saving its own time would always fail this check.
     const isDuplicate = schedules.some(
       s => s.dayOfWeek === form.dayOfWeek && s.id !== editingId
     );
 
     if (isDuplicate) {
       setErrorMsg(`You already have a working slot set for ${form.dayOfWeek}.`);
-      return; // 拦截执行，不写入数据库
+      return;
     }
 
     setIsLoading(true);
     try {
       if (editingId) {
-        // 更新现有排班 (Update)
         await updateDoc(doc(db, 'Schedule', editingId), {
           dayOfWeek: form.dayOfWeek,
           startTime: form.startTime,
           endTime: form.endTime,
         });
       } else {
-        // 添加新排班 (Create)
         await addDoc(collection(db, 'Schedule'), {
           adminID: adminID,
           dayOfWeek: form.dayOfWeek,
@@ -123,7 +117,6 @@ const DoctorWorkingHours: React.FC = () => {
     }
   };
 
-  // 3. 删除数据 (Delete)
   const handleDelete = async (id: string, day: string) => {
     if (window.confirm(`Are you sure you want to remove working hours for ${day}?`)) {
       setIsLoading(true);
@@ -142,7 +135,6 @@ const DoctorWorkingHours: React.FC = () => {
   return (
     <div className="space-y-6 animate-fade-in">
 
-      {/* 顶部操作栏 */}
       <div className="bg-white p-6 rounded-[24px] shadow-sm border border-gray-100 flex items-center space-x-4">
         <button
           onClick={() => navigate('/dashboard')}
@@ -158,7 +150,6 @@ const DoctorWorkingHours: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
-        {/* 左边：Add / Edit Time Slot 表单 */}
         <div className="lg:col-span-1 bg-white rounded-[24px] shadow-sm border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-gray-800 flex items-center">
@@ -172,7 +163,6 @@ const DoctorWorkingHours: React.FC = () => {
             )}
           </div>
 
-          {/* ⚠️ 错误提示区：如果有 duplicate 就会显示红框 */}
           {errorMsg && (
             <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-xs font-bold rounded-lg flex items-start">
               <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0 mt-0.5" />
@@ -211,7 +201,6 @@ const DoctorWorkingHours: React.FC = () => {
           </form>
         </div>
 
-        {/* 右边：排班列表 */}
         <div className="lg:col-span-2 bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden">
           {isLoading ? (
             <div className="flex justify-center items-center h-64"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>

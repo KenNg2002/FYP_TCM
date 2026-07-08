@@ -6,10 +6,10 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'ipaddress.dart';
 
-// 统一管理推送通知：
-// 1. init()          — App 启动时调用一次，设置本地通知 + 前台推送展示
-// 2. registerToken()  — 登录成功 / 进入首页后调用，把这台设备的 FCM token 存进 Firestore
-// 3. send(...)        — 业务代码在关键节点（下单、指派骑手、批准退款...）调用，触发后端群发推送
+// Centralizes push notification handling:
+// 1. init()           — called once on app start; sets up local notifications + foreground push display
+// 2. registerToken()  — called after login / entering the home screen; stores this device's FCM token in Firestore
+// 3. send(...)        — called by business code at key events (order placed, rider assigned, refund approved...) to trigger a backend push
 class NotificationService {
   NotificationService._();
   static final NotificationService instance = NotificationService._();
@@ -39,7 +39,7 @@ class NotificationService {
 
     await FirebaseMessaging.instance.requestPermission();
 
-    // App 在前台收到推送时，FCM 不会自动弹系统通知，要自己用本地通知显示出来
+    // FCM doesn't auto-show a system notification for foreground messages, so show one manually via local notifications
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final notification = message.notification;
       if (notification == null) return;
@@ -60,7 +60,7 @@ class NotificationService {
     });
   }
 
-  // 登录成功后调用：把当前设备的 FCM token 存到 User 表，后端发推送时靠这个找到设备
+  // Call after login: stores this device's FCM token on the User doc so the backend can target it for push
   Future<void> registerToken() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -71,18 +71,18 @@ class NotificationService {
         await FirebaseFirestore.instance.collection('User').doc(uid).update({'fcmToken': token});
       }
 
-      // token 会不定期轮换，监听一下确保存的一直是最新的
+      // Tokens rotate periodically — listen for refreshes so the stored token stays current
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
         FirebaseFirestore.instance.collection('User').doc(uid).update({'fcmToken': newToken});
       });
     } catch (e) {
-      // 存 token 失败不该阻断登录流程，顶多这台设备收不到推送
+      // A failed token save shouldn't block login — worst case this device just won't get push notifications
       // ignore: avoid_print
       print('Failed to register FCM token: $e');
     }
   }
 
-  // 触发一次推送：uids 指定收件人，或用 role 群发（例如 role: 'Admin' 通知所有管理员）
+  // Trigger a push: target specific uids, or broadcast by role (e.g. role: 'Admin' notifies all admins)
   Future<void> send({List<String>? uids, String? role, required String title, required String body, Map<String, dynamic>? data}) async {
     try {
       await http.post(
@@ -97,7 +97,7 @@ class NotificationService {
         }),
       );
     } catch (e) {
-      // 推送发送失败不该阻断正常业务流程（比如下单已经成功了），只记录日志
+      // A failed push shouldn't block the business flow (e.g. the order already succeeded) — just log it
       // ignore: avoid_print
       print('Failed to send notification: $e');
     }

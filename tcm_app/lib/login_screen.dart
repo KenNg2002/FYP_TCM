@@ -21,7 +21,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _isPasswordVisible = false;
   bool _isLoading = false;
-  // 🔒 安全升级：删除了无用的 _rememberMe，改用 Firebase 官方的持久化 Session
 
   final Color primaryGreen = const Color(0xFF2E7D32);
   final Color bgGray = const Color(0xFFF4F6F8);
@@ -29,13 +28,11 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    // 🔒 安全升级：App 启动时自动检查是否已经登录过
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkExistingSession();
     });
   }
 
-  // 🔒 自动检测本地安全的 Firebase Token
   Future<void> _checkExistingSession() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
@@ -77,7 +74,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return null; 
   }
 
-  // 路由跳转逻辑抽离，方便重用
+  // Extracted so it can be reused for both session restore and fresh login
   void _routeUserBasedOnRole(String? userRole) {
     if (!mounted) return;
 
@@ -136,13 +133,19 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 30),
+                const SizedBox(height: 10),
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.asset('assets/icon/logo.png', width: 80, height: 80),
+                  ),
+                ),
+                const SizedBox(height: 20),
                 const Text("Welcome Back", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF212121))),
                 const SizedBox(height: 8),
                 Text("Sign in to continue your health journey", style: TextStyle(fontSize: 16, color: Colors.grey[600])),
                 const SizedBox(height: 40),
 
-                // 🔒 安全升级：加强了 Regex 和防止空白输入的验证
                 _buildFormField(
                   controller: _emailController,
                   label: "Email Address",
@@ -168,12 +171,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) return 'Password field cannot be empty';
-                    return null; // 登录时不需要检查密码强度，只需确保不为空
+                    return null; // Login only needs a non-empty check — complexity is enforced at registration
                   },
                 ),
                 const SizedBox(height: 16),
 
-                // 移除了 Remember me，只保留 Forgot Password 靠右对齐
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(

@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // [新增] 用于跳转页面
-import { signOut } from 'firebase/auth'; // [新增] 用于 Firebase 登出
-import { auth } from '../firebaseConfig'; // [新增] 引入 firebase Auth 实例
+import { useNavigate } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
+import { auth } from '../firebaseConfig';
 import { registerWebPushToken } from '../notifications';
 
-// 1. 确保路径正确 (它们都在同一个 pages 文件夹下)
 import ClinicAppointments from './ClinicAppointments';
 import HerbalProducts from './HerbalProducts';
 import OrdersDelivery from './OrdersDelivery';
@@ -16,7 +15,6 @@ import RegisterDeliveryMan from './RegisterDeliveryMan';
 import MyProfile from './MyProfile';
 import RefundManagement from './RefundManagement';
 
-// 引入图标
 import {
   LayoutDashboard, Leaf, ShoppingCart, CalendarCheck,
   Users, LogOut, Search, Bell, CalendarDays, ShieldCheck, Stethoscope, Bike, UserCircle, Undo2
@@ -24,9 +22,9 @@ import {
 
 import { DashboardCharts } from './DashboardCharts';
 
-// Administrator.adminRole 决定看到哪些菜单：
-// - Admin：商品/订单/人员注册相关
-// - Doctor：自己的排班、诊断审核、门诊预约
+// Administrator.adminRole determines which menu items are visible:
+// - Admin: product/order/personnel registration related
+// - Doctor: own schedule, diagnosis review, clinic appointments
 const menuConfig: { name: string; icon: any; roles: Array<'Admin' | 'Doctor'> }[] = [
   { name: 'Dashboard', icon: LayoutDashboard, roles: ['Admin', 'Doctor'] },
   { name: 'Diagnosis Review', icon: Search, roles: ['Doctor'] },
@@ -42,29 +40,26 @@ const menuConfig: { name: string; icon: any; roles: Array<'Admin' | 'Doctor'> }[
 ];
 
 const AdminDashboard: React.FC = () => {
-  // Administrator.adminRole，登录时存的（见 AdminLogin.tsx）
+  // Administrator.adminRole, stored at login time (see AdminLogin.tsx)
   const adminRole = (localStorage.getItem('adminRole') as 'Admin' | 'Doctor') || 'Doctor';
   const menuItems = menuConfig.filter((item) => item.roles.includes(adminRole));
 
   const [activeMenu, setActiveMenu] = useState(menuItems[0]?.name ?? 'Dashboard');
-  const navigate = useNavigate(); // [新增] 初始化跳转
+  const navigate = useNavigate();
 
   useEffect(() => {
     registerWebPushToken();
   }, []);
 
-  // [新增] 处理登出的核心逻辑
   const handleLogout = async () => {
     try {
-      // 1. 呼叫 Firebase 断开登录状态
       await signOut(auth);
-      
-      // 2. 清除我们之前存在本地的 userRole / adminRole，防止权限泄露
+
+      // Clear locally stored userRole / adminRole to prevent permission leakage
       localStorage.removeItem('userRole');
       localStorage.removeItem('adminRole');
 
-      // 3. 强制跳转回登录页面
-      navigate('/login', { replace: true }); 
+      navigate('/login', { replace: true });
     } catch (error) {
       console.error("Error logging out:", error);
       alert("Failed to log out. Please try again.");
@@ -73,11 +68,10 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-gray-50 font-sans">
-      {/* 左侧侧边栏 */}
       <aside className="w-64 bg-gray-900 text-white flex flex-col shadow-xl">
         <div className="h-20 flex items-center px-6 border-b border-gray-800">
-          <div className="w-8 h-8 bg-green-500 rounded-full mr-3 flex items-center justify-center">
-            <Leaf className="w-5 h-5 text-white" />
+          <div className="w-8 h-8 rounded-lg overflow-hidden mr-3">
+            <img src="/logo.png" alt="SH Wellness" className="w-full h-full object-cover" />
           </div>
           <span className="text-xl font-bold tracking-wider">SH Wellness</span>
         </div>
@@ -101,7 +95,6 @@ const AdminDashboard: React.FC = () => {
           })}
         </nav>
 
-        {/* ⚠️ 这里绑定了登出功能 */}
         <div className="p-4 border-t border-gray-800">
           <button 
             onClick={handleLogout}
@@ -113,9 +106,7 @@ const AdminDashboard: React.FC = () => {
         </div>
       </aside>
 
-      {/* 右侧主内容区 */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        {/* 顶部栏 */}
         <header className="h-20 bg-white shadow-sm flex items-center justify-between px-8">
           <h1 className="text-2xl font-bold text-gray-800">{activeMenu} Overview</h1>
           <div className="flex items-center space-x-6">
@@ -123,12 +114,9 @@ const AdminDashboard: React.FC = () => {
           </div>
         </header>
 
-        {/* 动态内容渲染 */}
         <div className="flex-1 overflow-auto p-8">
-          {/* Dashboard 页面 */}
           {activeMenu === 'Dashboard' && (
             <div className="space-y-6">
-                {/* 顶部报告状态条 */}
                 <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-black text-gray-800">Performance Summary: April 2026</h2>
                 <span className="bg-green-100 text-green-700 px-4 py-1.5 rounded-full text-xs font-bold border border-green-200">
@@ -146,7 +134,6 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* 子组件页面切换 */}
           {activeMenu === 'My Schedule' && <DoctorSchedule />}
           {activeMenu === 'Diagnosis Review' && <DiagnosisReview />}
           {activeMenu === 'Herbal Products' && <HerbalProducts />}
@@ -169,7 +156,6 @@ const AdminDashboard: React.FC = () => {
   );
 };
 
-// 辅助统计卡片组件
 const StatCard = ({ title, value, trend, isUp, color }: any) => (
   <div className="bg-white p-6 rounded-[30px] shadow-sm border border-gray-100 relative overflow-hidden group hover:shadow-lg transition-all">
     <div className="relative z-10">

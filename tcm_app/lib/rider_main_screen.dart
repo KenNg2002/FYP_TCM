@@ -17,9 +17,9 @@ class _RiderMainScreenState extends State<RiderMainScreen> {
   void initState() {
     super.initState();
     _pages = [
-      DeliveryTaskScreen(),    // 核心任务大厅
-      DeliveryHistoryScreen(), // 历史记录
-      DeliveryProfileScreen(), // 个人中心
+      DeliveryTaskScreen(),
+      DeliveryHistoryScreen(),
+      DeliveryProfileScreen(),
     ];
   }
 

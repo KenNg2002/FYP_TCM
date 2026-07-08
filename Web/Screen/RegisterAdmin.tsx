@@ -19,7 +19,6 @@ const RegisterAdmin: React.FC = () => {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
-  // 1. 状态里移除了 department 和 description
   const [formData, setFormData] = useState({
     username: '',
     userEmail: '',
@@ -60,7 +59,6 @@ const RegisterAdmin: React.FC = () => {
 
       const batch = writeBatch(db);
 
-      // A. 写入 User 表
       const userRef = doc(db, 'User', newAdminUid);
       batch.set(userRef, {
         userID: newAdminUid,
@@ -73,20 +71,18 @@ const RegisterAdmin: React.FC = () => {
         photoURL
       });
 
-      // B. 写入 Administrator 表
       const adminRef = doc(db, 'Administrator', newAdminUid);
       batch.set(adminRef, {
         adminID: newAdminUid,
         adminRole: 'Admin',
-        department: null,  // ⚠️ 按照你的要求，直接设为 null
-        description: null  // ⚠️ 按照你的要求，直接设为 null
+        department: null,
+        description: null
       });
 
       await batch.commit();
       await signOut(secondaryAuth);
 
       setSuccessMsg(`Administrator ${formData.username} has been successfully registered!`);
-      // 注册成功后清空表单
       setFormData({ username: '', userEmail: '', userPhoneNum: '', password: '' });
       setPhotoFile(null);
       setErrors({});
@@ -117,7 +113,6 @@ const RegisterAdmin: React.FC = () => {
         <form onSubmit={handleRegister} className="space-y-6">
           <AvatarUpload value={photoFile} onChange={setPhotoFile} ringColorClass="ring-purple-200" />
 
-          {/* 完美的 2x2 布局排版 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Admin Full Name</label>

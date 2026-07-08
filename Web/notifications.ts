@@ -3,12 +3,15 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebaseConfig';
 import { serverBaseUrl } from './ipaddress';
 
-// 🔑 去 Firebase Console > Project Settings > Cloud Messaging > Web Push certificates
-// 生成一对 key，把下面这串换成你自己的 "Key pair"。不填的话网页端拿不到 FCM token，收不到推送。
+// Generate a key pair in Firebase Console > Project Settings > Cloud Messaging >
+// Web Push certificates and paste it below. Without it, the web app can't get an
+// FCM token and won't receive push notifications.
 const VAPID_KEY = 'PASTE_YOUR_WEB_PUSH_VAPID_KEY_HERE';
 
-// Admin 登录后调用一次：请求浏览器通知权限，把这个浏览器的 FCM token 存进 Firestore，
-// 并且监听前台推送（网页开着且在前台时，FCM 不会自动弹通知，要自己弹）。
+// Call once after admin login: requests browser notification permission, saves this
+// browser's FCM token to Firestore, and listens for foreground pushes (FCM doesn't
+// auto-display a notification while the page is open and in the foreground, so we
+// show one manually).
 export async function registerWebPushToken() {
   const uid = auth.currentUser?.uid;
   if (!uid || !('Notification' in window)) return;
@@ -33,7 +36,7 @@ export async function registerWebPushToken() {
   }
 }
 
-// 触发一次推送：uids 指定收件人，或用 role 群发（例如 role: 'DeliveryMan' 通知某个骑手更方便用 uids）
+// Sends a push: pass uids for specific recipients, or role to broadcast to a group
 export async function sendNotification(params: { uids?: string[]; role?: string; title: string; body: string; data?: Record<string, string> }) {
   try {
     await fetch(`${serverBaseUrl}/send-notification`, {

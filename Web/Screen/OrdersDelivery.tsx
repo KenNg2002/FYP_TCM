@@ -37,7 +37,6 @@ const OrdersDelivery: React.FC = () => {
   const [riderNames, setRiderNames] = useState<Record<string, string>>({});
   const [selectedRiderByOrder, setSelectedRiderByOrder] = useState<Record<string, string>>({});
 
-  // 监听所有订单
   useEffect(() => {
     const q = query(collection(db, 'Order'), orderBy('orderDate', 'desc'));
 
@@ -57,7 +56,6 @@ const OrdersDelivery: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 监听所有配送任务，拿到分配的骑手 + 送达凭证照片
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'DeliveryTask'), (snapshot) => {
       const map: Record<string, DeliveryTaskData> = {};
@@ -73,7 +71,7 @@ const OrdersDelivery: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 监听当前在线的骑手名单（Admin 只能派单给 Online 的骑手）
+  // Admin can only dispatch to riders currently marked Online
   useEffect(() => {
     const q = query(collection(db, 'DeliveryMan'), where('currentAvailability', '==', 'Online'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -85,7 +83,6 @@ const OrdersDelivery: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 监听所有骑手账号的姓名，用于把 ID 显示成名字
   useEffect(() => {
     const q = query(collection(db, 'User'), where('userRole', '==', 'DeliveryMan'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -103,7 +100,6 @@ const OrdersDelivery: React.FC = () => {
 
   const onlineRiders: RiderInfo[] = onlineRiderIds.map(id => ({ id, username: riderNames[id] || id }));
 
-  // 第一阶段：Admin 把订单指派给指定的在线骑手
   const handleAssignRider = async (order: OrderData) => {
     const riderId = selectedRiderByOrder[order.id];
     if (!riderId) return;
@@ -136,7 +132,7 @@ const OrdersDelivery: React.FC = () => {
     }
   };
 
-  // Self Pickup 专属：不需要指派骑手，Admin 直接标记好可以让客人来取
+  // Self Pickup only: no rider needed, Admin just flags it as ready for the customer to collect
   const handleMarkReadyForPickup = async (order: OrderData) => {
     try {
       await writeBatch(db)
@@ -150,7 +146,7 @@ const OrdersDelivery: React.FC = () => {
     }
   };
 
-  // Self Pickup 专属：客人到店取走后，Admin 点这个结单（全程没有 DeliveryTask，不用同步骑手数据）
+  // Self Pickup only: Admin clicks this once the customer collects in-store (no DeliveryTask ever existed, so nothing to sync)
   const handleMarkPickedUp = async (order: OrderData) => {
     try {
       await writeBatch(db)
@@ -163,7 +159,7 @@ const OrdersDelivery: React.FC = () => {
     }
   };
 
-  // 兜底：管理员强制完单（同时把对应的 DeliveryTask 也标记完成，避免数据不一致）
+  // Fallback: Admin force-completes the order, also marking its DeliveryTask completed to keep the two in sync
   const handleMarkCompleted = async (order: OrderData) => {
     try {
       const batch = writeBatch(db);
@@ -191,7 +187,6 @@ const OrdersDelivery: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* 顶部统计卡片 */}
       <div className="grid grid-cols-3 gap-6">
         <div className="bg-white p-4 rounded-xl shadow-sm border border-orange-100 border-l-4 border-l-orange-500 flex items-center justify-between">
           <div><p className="text-sm text-gray-500">Preparing / Pending</p><p className="text-2xl font-bold text-gray-900">{isLoading ? '-' : pendingCount}</p></div>
@@ -277,7 +272,7 @@ const OrdersDelivery: React.FC = () => {
                     </td>
 
                     <td className="px-6 py-4 min-w-[220px]">
-                      {/* 状态 1：刚下单。Self Pickup 直接标记备货完成；一般配送则指派给一位在线骑手 */}
+                      {/* Just placed: Self Pickup goes straight to ready-for-pickup; standard delivery gets assigned to an online rider */}
                       {order.orderStatus === 'Pending' && order.deliveryMethod === 'Self Pickup' ? (
                         <button
                           onClick={() => handleMarkReadyForPickup(order)}
@@ -311,7 +306,7 @@ const OrdersDelivery: React.FC = () => {
                           </div>
                         )
 
-                      // 状态 2a：Self Pickup 已备货完成，等客人上门取货
+                      // Self Pickup ready, waiting for the customer to collect
                       ) : order.orderStatus === 'ReadyForPickup' ? (
                         <div className="flex flex-col gap-1">
                           <span className="text-purple-600 text-xs font-bold flex items-center bg-purple-50 px-3 py-1.5 rounded-full w-fit border border-purple-100 shadow-inner">
@@ -325,7 +320,7 @@ const OrdersDelivery: React.FC = () => {
                           </button>
                         </div>
 
-                      // 状态 2b：已指派给骑手，等骑手点击 "开始配送"
+                      // Assigned to a rider, waiting for them to start the delivery
                       ) : order.orderStatus === 'Assigned' ? (
                         <div className="flex flex-col gap-1">
                           <span className="text-orange-600 text-xs font-bold flex items-center bg-orange-50 px-3 py-1.5 rounded-full w-fit border border-orange-100 shadow-inner">
@@ -334,7 +329,7 @@ const OrdersDelivery: React.FC = () => {
                           <span className="text-[10px] text-gray-400 ml-1">Waiting for rider to start delivery</span>
                         </div>
 
-                      // 状态 3：骑手已出发，正在送货
+                      // Rider is out delivering
                       ) : order.orderStatus === 'Delivering' ? (
                         <div className="flex flex-col items-start gap-2">
                           <span className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-xs font-bold border border-blue-100 flex items-center shadow-inner">
@@ -348,17 +343,17 @@ const OrdersDelivery: React.FC = () => {
                           </button>
                         </div>
 
-                      // 状态 4：已送达
+                      // Delivered
                       ) : order.orderStatus === 'Completed' ? (
                         <span className="text-green-600 text-xs font-bold flex items-center bg-green-50 px-3 py-1.5 rounded-full w-fit border border-green-100">
                           <CheckCircle className="w-4 h-4 mr-1.5" /> Order Completed
                         </span>
 
-                      // 状态 5：客户申请取消/售后，去 "Cancellations & Refunds" 页面处理
+                      // Customer requested a cancellation/refund — handled on the Cancellations & Refunds page
                       ) : order.orderStatus === 'Cancellation Pending' || order.orderStatus === 'Refund Pending' ? (
                         <span className="text-[11px] text-gray-400 italic">Awaiting review in Cancellations & Refunds</span>
 
-                      // 状态 6：已经取消/退款完成
+                      // Already cancelled/refunded
                       ) : (
                         <span className="text-gray-400 text-xs font-bold flex items-center bg-gray-50 px-3 py-1.5 rounded-full w-fit border border-gray-100">
                           <XCircle className="w-4 h-4 mr-1.5" /> {order.orderStatus}
@@ -388,7 +383,6 @@ const OrdersDelivery: React.FC = () => {
   );
 };
 
-// 状态徽章 UI
 const OrderStatusBadge = ({ status }: { status: string }) => {
   let color = 'bg-gray-100 text-gray-700 border-gray-200';
   if (status === 'Pending') color = 'bg-red-50 text-red-700 border-red-200';

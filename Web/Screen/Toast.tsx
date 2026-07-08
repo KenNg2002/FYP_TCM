@@ -8,7 +8,7 @@ interface ToastProps {
   onDismiss: () => void;
 }
 
-// 从屏幕顶部滑下 -> 停留 duration 毫秒 -> 再滑回顶部消失
+// Slides down from the top, stays for `duration` ms, then slides back up and disappears
 const Toast: React.FC<ToastProps> = ({ message, type = 'success', duration = 3500, onDismiss }) => {
   const [isExiting, setIsExiting] = useState(false);
 

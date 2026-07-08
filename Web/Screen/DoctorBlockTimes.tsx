@@ -31,11 +31,9 @@ const DoctorBlockTimes: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [adminID, setAdminID] = useState<string>('');
 
-  // 表单状态 (常驻左边，不再用弹窗)
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
 
-  // 右边 list 的 tab：看 Recurring 的还是 One-Time 的
   const [activeTab, setActiveTab] = useState<'recurring' | 'onetime'>('recurring');
 
   useEffect(() => {
@@ -81,7 +79,7 @@ const DoctorBlockTimes: React.FC = () => {
       blockType: block.blockType,
       reason: block.reason || ''
     });
-    // 编辑哪种类型，就自动切到对应的 tab，方便看到自己在改哪一笔
+    // Switch to the matching tab so the user can see the item they're editing
     setActiveTab(block.isRecurring ? 'recurring' : 'onetime');
   };
 
@@ -148,7 +146,6 @@ const DoctorBlockTimes: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
 
-        {/* 左边：Add / Edit Block Time 表单 */}
         <div className="lg:col-span-1 bg-white rounded-[24px] shadow-sm border border-gray-100 p-6">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-gray-800 flex items-center">
@@ -211,7 +208,6 @@ const DoctorBlockTimes: React.FC = () => {
           </form>
         </div>
 
-        {/* 右边：Block Time List，上面可以切换 Recurring / One-Time */}
         <div className="lg:col-span-2 bg-white rounded-[24px] shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center space-x-2 p-4 border-b border-gray-100">
             <button

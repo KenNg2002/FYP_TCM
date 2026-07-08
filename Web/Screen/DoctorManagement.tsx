@@ -29,7 +29,7 @@ const DoctorManagement: React.FC = () => {
     description: ''
   });
 
-  // 🚀 核心功能：联合读取 User 和 Administrator 表
+  // Doctor data is split across the User and Administrator collections, so join them here
   const fetchDoctors = async () => {
     setIsLoading(true);
     try {
@@ -66,14 +66,13 @@ const DoctorManagement: React.FC = () => {
     fetchDoctors();
   }, []);
 
-  // 🚀 核心功能：联合写入 (新增或更新)
+  // Writes to both User and Administrator collections (new doctor or update)
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    
+
     try {
       if (editingId) {
-        // ========== 更新现有医生 ==========
         await updateDoc(doc(db, 'User', editingId), {
           username: formData.name,
           userEmail: formData.email,
@@ -87,12 +86,10 @@ const DoctorManagement: React.FC = () => {
         });
 
       } else {
-        // ========== 新增医生 ==========
-        // 1. 生成一个共享的唯一 ID
-        const newUserRef = doc(collection(db, 'User')); 
+        // Generate one shared ID so the User and Administrator docs stay linked
+        const newUserRef = doc(collection(db, 'User'));
         const newUid = newUserRef.id;
 
-        // 2. 写入 User 表
         await setDoc(newUserRef, {
           username: formData.name,
           userEmail: formData.email,
@@ -101,10 +98,9 @@ const DoctorManagement: React.FC = () => {
           createdAt: serverTimestamp()
         });
 
-        // 3. 写入 Administrator 表
         await setDoc(doc(db, 'Administrator', newUid), {
           adminID: newUid,
-          adminName: formData.name, // 备份冗余数据
+          adminName: formData.name, // Denormalized copy for convenience
           adminRole: 'Doctor',
           department: formData.department,
           description: formData.description,
@@ -113,7 +109,7 @@ const DoctorManagement: React.FC = () => {
       }
 
       setIsModalOpen(false);
-      fetchDoctors(); // 刷新列表
+      fetchDoctors();
     } catch (error) {
       console.error("Error saving doctor:", error);
       alert("Failed to save doctor data.");
@@ -122,7 +118,7 @@ const DoctorManagement: React.FC = () => {
     }
   };
 
-  // 🚀 核心功能：联合删除
+  // Removes the doctor's records from both Administrator and User collections
   const handleDelete = async (id: string, name: string) => {
     if (!window.confirm(`Are you sure you want to remove Dr. ${name}? This action cannot be undone.`)) return;
     
@@ -156,7 +152,6 @@ const DoctorManagement: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* 头部区域 */}
       <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Practitioner Directory</h1>
@@ -170,7 +165,6 @@ const DoctorManagement: React.FC = () => {
         </button>
       </div>
 
-      {/* 医生列表卡片网格 */}
       {isLoading ? (
         <div className="flex justify-center items-center h-64">
           <Loader2 className="w-10 h-10 animate-spin text-green-600" />
@@ -184,11 +178,9 @@ const DoctorManagement: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {doctors.map((doctor) => (
             <div key={doctor.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow relative group">
-              {/* 卡片顶部绿色背景装饰 */}
               <div className="h-20 bg-green-50 w-full border-b border-green-100"></div>
               
               <div className="px-6 pb-6 relative">
-                {/* 悬浮头像 */}
                 <div className="absolute -top-10 left-6">
                   <div className="w-20 h-20 bg-white rounded-full p-1 shadow-sm border border-gray-100">
                     <div className="w-full h-full bg-green-100 rounded-full flex items-center justify-center">
@@ -197,7 +189,6 @@ const DoctorManagement: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 动作按钮 (Hover 显示) */}
                 <div className="absolute top-3 right-6 flex gap-2">
                   <button onClick={() => openModalForEdit(doctor)} className="p-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-full transition-colors">
                     <Edit2 className="w-4 h-4" />
@@ -234,7 +225,6 @@ const DoctorManagement: React.FC = () => {
         </div>
       )}
 
-      {/* 新增/编辑 表单弹窗 */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl overflow-hidden">

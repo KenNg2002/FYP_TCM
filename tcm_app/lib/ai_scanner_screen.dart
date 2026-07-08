@@ -8,12 +8,11 @@ class AIScannerScreen extends StatefulWidget {
 class _AIScannerScreenState extends State<AIScannerScreen> {
   bool _isScanning = false;
   bool _showResult = false;
-  String? _selectedSource; // 模拟选择的来源
+  String? _selectedSource;
 
   final Color primaryGreen = const Color(0xFF2E7D32);
   final Color bgGray = const Color(0xFFF4F6F8);
 
-  // 解决重拍：清除状态
   void _retakePhoto() {
     setState(() {
       _isScanning = false;
@@ -22,16 +21,15 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
     });
   }
 
-  // 模拟分析：选择来源后开始
   void _startAIAnalysis(String source) {
-    Navigator.pop(context); // 关闭 BottomSheet
+    Navigator.pop(context);
     setState(() {
       _selectedSource = source;
       _isScanning = true;
       _showResult = false;
     });
 
-    // 模拟 AI 识别延迟
+    // Simulated AI processing delay
     Future.delayed(const Duration(milliseconds: 2500), () {
       setState(() {
         _isScanning = false;
@@ -40,7 +38,6 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
     });
   }
 
-  // 模拟选择：弹出底部选择栏
   void _showPhotoSourceOptions() {
     showModalBottomSheet(
       context: context,
@@ -64,7 +61,6 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
     );
   }
 
-  // 辅助方法：生成选择项
   Widget _buildSourceTile(IconData icon, String title, String source) {
     return ListTile(
       leading: Icon(icon, color: primaryGreen),
@@ -85,7 +81,7 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF1F2937)),
-          onPressed: () => Navigator.pop(context), // 需要确保有上一页，否则这里可以改为其他逻辑
+          onPressed: () => Navigator.pop(context), // Assumes there's a previous route to pop back to
         ),
         title: const Text(
           "AI Tongue Scanner",
@@ -94,12 +90,11 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0), // 调整了 padding 让卡片更饱满
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // 顶部提示语
               Center(
                 child: Text(
                   _showResult ? "Analysis Complete" : "Align your tongue within the frame",
@@ -109,25 +104,24 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
               ),
               const SizedBox(height: 24),
 
-              // 核心扫描区域
               Center(child: _buildCameraViewfinder()),
 
               const SizedBox(height: 32),
 
-              // 动态底部区域：根据状态显示按钮或结果
+              // Bottom area switches between the start button, scanning indicator, and results
               if (!_showResult && !_isScanning)
                 Center(child: _buildStartButton()),
 
               if (_isScanning)
                 Center(child: _buildScanningIndicator()),
 
-              // 当显示结果时，展示：诊断卡片 -> 推荐商品 -> 操作按钮
+              // Order: diagnosis card -> recommendations -> action buttons
               if (_showResult) ...[
                 _buildDiagnosisResultCard(),
                 const SizedBox(height: 24),
-                _buildRecommendationSection(), // 🌟 新增的推荐区块
+                _buildRecommendationSection(),
                 const SizedBox(height: 32),
-                _buildActionButtons(),         // 🌟 将按钮独立出来
+                _buildActionButtons(),
               ],
             ],
           ),
@@ -136,7 +130,6 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
     );
   }
 
-  // 组件：模拟相机的黑科技扫描框
   Widget _buildCameraViewfinder() {
     return Container(
       height: 350,
@@ -211,7 +204,6 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
     );
   }
 
-  // 组件：专业体检报告卡片 (剥离了底部的按钮)
   Widget _buildDiagnosisResultCard() {
     return Container(
       width: double.infinity,
@@ -282,12 +274,11 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
     );
   }
 
-  // 🌟 新增区块：推荐商品区域 (CARS Logic 的 UI 体现)
+  // UI representation of the CARS recommendation logic
   Widget _buildRecommendationSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 推荐区标题
         Row(
           children: [
             Icon(Icons.auto_awesome_rounded, color: Colors.orange[400], size: 20),
@@ -299,10 +290,9 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
         const Text("Herbs filtered to balance Damp-Heat", style: TextStyle(fontSize: 13, color: Colors.grey)),
         const SizedBox(height: 16),
 
-        // 横向滑动的商品列表
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          clipBehavior: Clip.none, // 防止阴影被截断
+          clipBehavior: Clip.none, // Prevents the card shadow from being clipped
           child: Row(
             children: [
               _buildProductCard("Chrysanthemum Tea", "Clears Heat & Detox", "RM 15.00"),
@@ -317,7 +307,6 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
     );
   }
 
-  // 🌟 新增辅助方法：单张商品卡片
   Widget _buildProductCard(String name, String tag, String price) {
     return Container(
       width: 150,
@@ -329,7 +318,6 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 商品图片占位符
           Container(
             height: 100,
             width: double.infinity,
@@ -344,7 +332,7 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 对应论文的 Health Tag
+                // Corresponds to the Health Tag concept from the thesis
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(4)),
@@ -372,7 +360,6 @@ class _AIScannerScreenState extends State<AIScannerScreen> {
     );
   }
 
-  // 独立出来的操作按钮区域
   Widget _buildActionButtons() {
     return Column(
       children: [

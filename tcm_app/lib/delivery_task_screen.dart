@@ -26,7 +26,6 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     _fetchCurrentAvailability();
   }
 
-  // 1. 获取上下线状态
   Future<void> _fetchCurrentAvailability() async {
     try {
       var doc = await FirebaseFirestore.instance.collection('DeliveryMan').doc(currentRiderId).get();
@@ -42,7 +41,7 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     }
   }
 
-  // 2. 切换上下线（有未完成的活跃任务时，UI 层会禁用这个开关，这里不需要再防呆）
+  // Toggle online/offline — the UI already disables this switch when there's an active task, so no guard is needed here
   Future<void> _toggleOnlineStatus(bool value) async {
     setState(() { _isOnline = value; });
     try {
@@ -63,7 +62,7 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     }
   }
 
-  // 通知下单的客户：查一下这张订单的 customerID 再推送给他
+  // Look up the order's customerID and push a notification to that customer
   Future<void> _notifyCustomer(String orderId, String title, String body) async {
     try {
       final orderSnap = await FirebaseFirestore.instance.collection('Order').doc(orderId).get();
@@ -75,7 +74,7 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     }
   }
 
-  // 3. 骑手点击 "开始配送"：任务由 Admin 指派，这里不再有抢单/确认取货这两步
+  // Rider taps "Start Delivery" — tasks are admin-assigned, so there's no claim/confirm-pickup step here
   Future<void> _startDelivery(String taskId, String orderId) async {
     try {
       WriteBatch batch = FirebaseFirestore.instance.batch();
@@ -89,7 +88,6 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     }
   }
 
-  // 4. 拍照上传完成订单
   void _uploadProofAndComplete(String taskId, String orderId) {
     showModalBottomSheet(
       context: context, backgroundColor: Colors.white,
@@ -121,7 +119,7 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     );
   }
 
-  // 真正打开相机拍照，取消则不允许完成订单
+  // Opens the camera; if the user cancels, the delivery cannot be completed
   Future<void> _captureAndCompleteDelivery(String taskId, String orderId) async {
     XFile? photo;
     try {
@@ -151,7 +149,6 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     );
 
     try {
-      // 上传真实照片到 Firebase Storage
       Reference storageRef = FirebaseStorage.instance.ref().child('delivery_proofs/$taskId.jpg');
       await storageRef.putFile(File(photo.path));
       String downloadUrl = await storageRef.getDownloadURL();
@@ -173,8 +170,8 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 🚀 单一数据源：骑手当前被指派、尚未完成的任务。
-    // 这条 Stream 同时用来渲染任务卡片 + 决定 Online/Offline 开关是否要被锁死。
+    // Single source of truth: the rider's currently assigned, unfinished tasks.
+    // This stream both renders the task cards and decides whether the Online/Offline switch should be locked.
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('DeliveryTask')
           .where('deliverymanID', isEqualTo: currentRiderId)
@@ -209,7 +206,6 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
                   padding: const EdgeInsets.only(right: 12.0),
                   child: Switch(
                     value: _isOnline,
-                    // 防呆机制：手头有未完成的活跃订单时，禁止切换 Online/Offline
                     onChanged: hasActiveTask ? null : _toggleOnlineStatus,
                     activeColor: Colors.white,
                     activeTrackColor: Colors.greenAccent[400],
@@ -248,7 +244,7 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     );
   }
 
-  // ================= UI 组件库 ================= //
+  // ================= UI Components ================= //
 
   Widget _buildEmptyState() {
     return Center(
@@ -290,7 +286,6 @@ class _DeliveryTaskScreenState extends State<DeliveryTaskScreen> {
     );
   }
 
-  // 骑手被指派的任务卡片
   Widget _buildActiveTaskCard(Map<String, dynamic> task, String taskId) {
     bool isAssigned = task["taskStatus"] == "Assigned";
     String orderId = task['orderID'] ?? 'Unknown';

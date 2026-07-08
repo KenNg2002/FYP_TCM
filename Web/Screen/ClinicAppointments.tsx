@@ -3,7 +3,7 @@ import { Calendar, Clock, FileText, Loader2, XCircle, X, AlertCircle } from 'luc
 import { collection, query, where, onSnapshot, getDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 
-// Appointment 的真实 schema 是 mobile app (clinic_appointment_screen.dart) 写入的：
+// The Appointment schema is actually written by the mobile app (clinic_appointment_screen.dart):
 // customerID / adminID / appointmentDate / appointmentTime / remark / status
 interface Appointment {
   id: string;
@@ -20,16 +20,15 @@ const ClinicAppointments: React.FC = () => {
   const [patientNames, setPatientNames] = useState<{ [customerID: string]: string }>({});
   const [isLoading, setIsLoading] = useState(true);
 
-  // Cancel 弹窗状态
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
 
-  // 记录已经查过名字的 customerID，避免每次订单列表一有风吹草动就重新查一遍 User 表
+  // Tracks customerIDs we've already resolved a name for, so we don't re-query the User table on every list change
   const resolvedPatientIds = useRef<Set<string>>(new Set());
 
-  // 实时监听：只抓自己 (这个医生) 的预约，不是全部医生的。
-  // 病人可能随时在手机上取消/新增预约，医生这边开着页面要能马上看到
+  // Real-time listener scoped to this doctor's own appointments only (not all doctors').
+  // Patients can cancel/create appointments from the mobile app anytime, and the open page needs to reflect it immediately
   useEffect(() => {
     const currentUser = auth.currentUser;
     if (!currentUser) {
@@ -53,7 +52,6 @@ const ClinicAppointments: React.FC = () => {
       setAppointments(fetchedData);
       setIsLoading(false);
 
-      // 只查还没缓存过名字的病人
       const uniqueCustomerIDs = Array.from(new Set(fetchedData.map(a => a.customerID).filter(Boolean)));
       const uncachedIDs = uniqueCustomerIDs.filter(cid => !resolvedPatientIds.current.has(cid));
       if (uncachedIDs.length === 0) return;
@@ -182,7 +180,7 @@ const ClinicAppointments: React.FC = () => {
         </div>
       )}
 
-      {/* Cancel 确认弹窗，一定要填 reason 才能提交 */}
+      {/* Cancellation modal — a reason is required before it can be submitted */}
       {cancelTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm">
           <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-md p-8 animate-fade-in">

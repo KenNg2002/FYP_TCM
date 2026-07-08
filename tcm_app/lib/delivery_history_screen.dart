@@ -31,7 +31,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
         title: const Text("Delivery History", style: TextStyle(color: Color(0xFF1F2937), fontWeight: FontWeight.bold)),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // 🚀 核心修复：暂时去掉了 orderBy，这样就不需要去 Firebase 建立复合索引了！数据会立刻出来！
+        // No orderBy here to avoid requiring a Firestore composite index — sorted locally below instead
         stream: FirebaseFirestore.instance.collection('DeliveryTask')
             .where('deliverymanID', isEqualTo: currentRiderId)
             .where('taskStatus', isEqualTo: 'Completed')
@@ -47,12 +47,11 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
             return _buildEmptyState();
           }
 
-          // 💡 我们在本地用代码进行排序，代替 Firebase 的 orderBy
           historyTasks.sort((a, b) {
             Timestamp? timeA = (a.data() as Map<String, dynamic>)['completedTime'] as Timestamp?;
             Timestamp? timeB = (b.data() as Map<String, dynamic>)['completedTime'] as Timestamp?;
             if (timeA == null || timeB == null) return 0;
-            return timeB.compareTo(timeA); // 倒序：最新的在最上面
+            return timeB.compareTo(timeA); // Descending — newest first
           });
 
           return ListView.builder(
