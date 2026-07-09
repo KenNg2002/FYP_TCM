@@ -159,7 +159,17 @@ class _DeliveryEditProfileScreenState extends State<DeliveryEditProfileScreen> {
                 const SizedBox(height: 24),
                 _buildTextField(controller: _nameController, label: "Full Name", icon: Icons.person_outline, validator: (v) => v!.trim().isEmpty ? "Name required" : null),
                 const SizedBox(height: 20),
-                _buildTextField(controller: _phoneController, label: "Phone Number", icon: Icons.phone_outlined, keyboardType: TextInputType.phone, validator: (v) => v!.trim().isEmpty ? "Phone required" : null),
+                _buildTextField(
+                  controller: _phoneController,
+                  label: "Phone Number",
+                  icon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Phone required';
+                    if (!RegExp(r'^\+?[0-9]{10,11}$').hasMatch(v.trim())) return 'Please enter a valid phone number (10-11 digits)';
+                    return null;
+                  },
+                ),
                 const SizedBox(height: 20),
                 _buildTextField(controller: _vehiclePlateController, label: "Vehicle Plate Number", icon: Icons.motorcycle_outlined, validator: (v) => v!.trim().isEmpty ? "Vehicle plate required" : null),
                 const SizedBox(height: 20),
@@ -193,9 +203,9 @@ class _DeliveryEditProfileScreenState extends State<DeliveryEditProfileScreen> {
     );
   }
 
-  Widget _buildTextField({required TextEditingController controller, required String label, required IconData icon, TextInputType keyboardType = TextInputType.text, String? Function(String?)? validator}) {
+  Widget _buildTextField({required TextEditingController controller, required String label, required IconData icon, TextInputType keyboardType = TextInputType.text, bool obscureText = false, String? Function(String?)? validator}) {
     return TextFormField(
-      controller: controller, keyboardType: keyboardType, validator: validator,
+      controller: controller, keyboardType: keyboardType, obscureText: obscureText, validator: validator,
       decoration: InputDecoration(
         labelText: label, prefixIcon: Icon(icon, color: Colors.grey[500]),
         fillColor: Colors.white, filled: true,

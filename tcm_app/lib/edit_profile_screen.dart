@@ -27,7 +27,7 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  
+
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
   late TextEditingController _dobController;
@@ -110,7 +110,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       setState(() => _isLoading = false);
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Profile updated!'), backgroundColor: primaryGreen));
-      
+
       // Returning true here triggers user_profile_screen's _fetchUserData() to reload
       Navigator.pop(context, true);
 
@@ -176,7 +176,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 const SizedBox(height: 24),
                 _buildTextField(controller: _nameController, label: "Full Name", icon: Icons.person_outline, validator: (v) => v!.trim().isEmpty ? "Name required" : null),
                 const SizedBox(height: 20),
-                _buildTextField(controller: _phoneController, label: "Phone Number", icon: Icons.phone_outlined, keyboardType: TextInputType.phone, validator: (v) => v!.trim().isEmpty ? "Phone required" : null),
+                _buildTextField(
+                  controller: _phoneController,
+                  label: "Phone Number",
+                  icon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Phone required';
+                    if (!RegExp(r'^\+?[0-9]{10,11}$').hasMatch(v.trim())) return 'Please enter a valid phone number (10-11 digits)';
+                    return null;
+                  },
+                ),
                 const SizedBox(height: 20),
                 TextFormField(
                   controller: _dobController,
@@ -218,9 +228,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
-  Widget _buildTextField({required TextEditingController controller, required String label, required IconData icon, TextInputType keyboardType = TextInputType.text, String? Function(String?)? validator}) {
+  Widget _buildTextField({required TextEditingController controller, required String label, required IconData icon, TextInputType keyboardType = TextInputType.text, bool obscureText = false, String? Function(String?)? validator}) {
     return TextFormField(
-      controller: controller, keyboardType: keyboardType, validator: validator,
+      controller: controller, keyboardType: keyboardType, obscureText: obscureText, validator: validator,
       decoration: InputDecoration(
         labelText: label, prefixIcon: Icon(icon, color: Colors.grey[500]),
         fillColor: Colors.white, filled: true,

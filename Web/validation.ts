@@ -14,8 +14,8 @@ export function validateEmail(email: string): string | null {
 export function validatePhone(phone: string): string | null {
   const trimmed = phone.trim();
   if (!trimmed) return 'Please enter a phone number';
-  const phoneRegex = /^\+?[0-9]{9,15}$/;
-  if (!phoneRegex.test(trimmed)) return 'Please enter a valid phone number (e.g. 0123456789)';
+  const phoneRegex = /^\+?[0-9]{10,11}$/;
+  if (!phoneRegex.test(trimmed)) return 'Please enter a valid phone number (10-11 digits)';
   return null;
 }
 

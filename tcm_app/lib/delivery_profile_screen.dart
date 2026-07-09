@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart';
 import 'delivery_edit_profile_screen.dart';
+import 'change_password_sheet.dart';
 
 class DeliveryProfileScreen extends StatefulWidget {
   @override
@@ -136,6 +137,9 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
                   _buildProfileMenu(Icons.phone_android_rounded, "Phone Number", _userPhoneNum),
                   _buildProfileMenu(Icons.badge_rounded, "Driving License", _drivingLicense),
                   _buildProfileMenu(Icons.motorcycle_rounded, "Vehicle Plate", _vehiclePlateNum),
+                  _buildProfileMenu(Icons.lock_outline, "Change Password", "", onTap: () {
+                    showChangePasswordSheet(context, primaryColor: primaryGreen);
+                  }),
 
                   const SizedBox(height: 8),
                   SizedBox(
@@ -211,25 +215,27 @@ class _DeliveryProfileScreenState extends State<DeliveryProfileScreen> {
     );
   }
 
-  Widget _buildProfileMenu(IconData icon, String title, String subtitle) {
+  Widget _buildProfileMenu(IconData icon, String title, String subtitle, {VoidCallback? onTap}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12), 
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white, 
-        borderRadius: BorderRadius.circular(15), 
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 5)]
-      ), 
+      ),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8), 
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         leading: Container(
-          padding: const EdgeInsets.all(8), 
-          decoration: BoxDecoration(color: primaryGreen.withOpacity(0.1), shape: BoxShape.circle), 
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: primaryGreen.withOpacity(0.1), shape: BoxShape.circle),
           child: Icon(icon, color: primaryGreen)
-        ), 
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), 
-        subtitle: subtitle.isNotEmpty 
-            ? Text(subtitle, style: TextStyle(color: Colors.grey[700], fontSize: 13, fontWeight: FontWeight.w500)) 
-            : null, 
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        subtitle: subtitle.isNotEmpty
+            ? Text(subtitle, style: TextStyle(color: Colors.grey[700], fontSize: 13, fontWeight: FontWeight.w500))
+            : null,
+        trailing: onTap != null ? const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey) : null,
+        onTap: onTap,
       )
     );
   }

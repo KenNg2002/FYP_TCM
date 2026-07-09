@@ -212,8 +212,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   keyboardType: TextInputType.phone,
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) return 'Please enter your phone number';
-                    final phoneRegex = RegExp(r'^\+?[0-9]{9,15}$'); // Allows 9-15 digits, with an optional leading + (e.g. +60)
-                    if (!phoneRegex.hasMatch(value.trim())) return 'Please enter a valid phone number (e.g. 0123456789)';
+                    final phoneRegex = RegExp(r'^\+?[0-9]{10,11}$'); // Malaysian numbers are 10-11 digits, optional leading + (e.g. +60)
+                    if (!phoneRegex.hasMatch(value.trim())) return 'Please enter a valid phone number (10-11 digits)';
                     return null;
                   },
                 ),

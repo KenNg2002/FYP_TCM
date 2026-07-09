@@ -5,6 +5,7 @@ import 'home_screen.dart';
 import 'rider_main_screen.dart';
 import 'register_screen.dart';
 import 'notification_service.dart';
+import 'forgot_password_sheet.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -179,7 +180,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {},
+                    onPressed: () => showForgotPasswordSheet(context, primaryColor: primaryGreen, initialEmail: _emailController.text.trim()),
                     child: Text("Forgot Password?", style: TextStyle(color: primaryGreen, fontWeight: FontWeight.bold)),
                   ),
                 ),

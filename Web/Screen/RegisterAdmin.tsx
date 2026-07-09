@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Mail, Lock, User, Phone, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, Phone, Loader2 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, writeBatch, serverTimestamp } from 'firebase/firestore';
@@ -99,26 +99,19 @@ const RegisterAdmin: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in relative">
-      <div className="bg-white p-8 rounded-[30px] shadow-sm border border-gray-100">
-        <h2 className="text-2xl font-black text-gray-800 flex items-center">
-          <ShieldCheck className="w-7 h-7 mr-3 text-purple-600" /> Register Administrator
-        </h2>
-        <p className="text-gray-400 text-sm mt-2">Create a high-level access account for internal staff.</p>
-      </div>
-
-      <div className="bg-white p-8 rounded-[30px] shadow-sm border border-gray-100 max-w-2xl">
+      <div className="bg-white p-8 rounded-[30px] shadow-sm border border-gray-100 max-w-2xl mx-auto">
         {successMsg && <Toast type="success" message={successMsg} onDismiss={() => setSuccessMsg('')} />}
         {errorMsg && <Toast type="error" message={errorMsg} onDismiss={() => setErrorMsg('')} />}
 
-        <form onSubmit={handleRegister} className="space-y-6">
+        <form onSubmit={handleRegister} noValidate className="space-y-6">
           <AvatarUpload value={photoFile} onChange={setPhotoFile} ringColorClass="ring-purple-200" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Admin Full Name</label>
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Full Name</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><User className="h-5 w-5 text-gray-400" /></div>
-                <input required type="text" placeholder="e.g., Manager Wong" value={formData.username} onChange={(e) => setFormData({...formData, username: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
+                <input required type="text" placeholder="Full Name" value={formData.username} onChange={(e) => setFormData({...formData, username: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
               </div>
               {errors.username && <p className="text-red-500 text-xs mt-1">{errors.username}</p>}
             </div>
@@ -127,7 +120,7 @@ const RegisterAdmin: React.FC = () => {
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Phone Number</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Phone className="h-5 w-5 text-gray-400" /></div>
-                <input required type="tel" placeholder="e.g., 0123456789" value={formData.userPhoneNum} onChange={(e) => setFormData({...formData, userPhoneNum: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
+                <input required type="tel" placeholder="Phone Number" value={formData.userPhoneNum} onChange={(e) => setFormData({...formData, userPhoneNum: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
               </div>
               {errors.userPhoneNum && <p className="text-red-500 text-xs mt-1">{errors.userPhoneNum}</p>}
             </div>
@@ -136,7 +129,7 @@ const RegisterAdmin: React.FC = () => {
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Company Email</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="h-5 w-5 text-gray-400" /></div>
-                <input required type="email" placeholder="admin@tcm.com" value={formData.userEmail} onChange={(e) => setFormData({...formData, userEmail: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
+                <input required type="email" placeholder="Company Email" value={formData.userEmail} onChange={(e) => setFormData({...formData, userEmail: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
               </div>
               {errors.userEmail && <p className="text-red-500 text-xs mt-1">{errors.userEmail}</p>}
             </div>
@@ -145,7 +138,7 @@ const RegisterAdmin: React.FC = () => {
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Temporary Password</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-gray-400" /></div>
-                <input required type="text" placeholder="Min 8 chars, upper/lower/number/symbol" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
+                <input required type="text" placeholder="Temporary Password" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all" />
               </div>
               {errors.password ? (
                 <p className="text-red-500 text-xs mt-1">{errors.password}</p>

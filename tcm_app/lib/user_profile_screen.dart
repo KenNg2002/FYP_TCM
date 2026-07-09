@@ -5,6 +5,7 @@ import 'login_screen.dart';
 import 'edit_profile_screen.dart';
 import 'my_address_screen.dart';
 import 'payment_method_screen.dart';
+import 'change_password_sheet.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -149,6 +150,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       
                       _buildProfileMenu(Icons.payment_outlined, "Payment Methods", "Manage your credit cards & wallets", onTap: () {
                         Navigator.push(context, MaterialPageRoute(builder: (context) => const PaymentMethodScreen()));
+                      }),
+
+                      _buildProfileMenu(Icons.lock_outline, "Change Password", "Update your account password", onTap: () {
+                        showChangePasswordSheet(context, primaryColor: primaryGreen);
                       }),
 
                       const SizedBox(height: 20),

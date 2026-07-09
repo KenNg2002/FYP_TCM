@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { UserCircle, Mail, Lock, User, Phone, Stethoscope, FileText, Loader2 } from 'lucide-react';
+import { Mail, Lock, User, Phone, Stethoscope, FileText, Loader2, KeyRound, ChevronRight, X } from 'lucide-react';
 import { doc, getDoc, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { auth, db, storage } from '../firebaseConfig';
 import Toast from './Toast';
 import AvatarUpload from './AvatarUpload';
+import { validatePhone, validatePassword } from '../validation';
 
 const MyProfile: React.FC = () => {
   const adminRole = (localStorage.getItem('adminRole') as 'Admin' | 'Doctor') || 'Doctor';
@@ -21,6 +23,16 @@ const MyProfile: React.FC = () => {
   const [description, setDescription] = useState('');
   const [existingPhotoURL, setExistingPhotoURL] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [phoneError, setPhoneError] = useState('');
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordErrors, setPasswordErrors] = useState<{ [key: string]: string }>({});
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordSuccessMsg, setPasswordSuccessMsg] = useState('');
+  const [passwordErrorMsg, setPasswordErrorMsg] = useState('');
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -61,6 +73,10 @@ const MyProfile: React.FC = () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
+    const phoneErr = validatePhone(userPhoneNum);
+    setPhoneError(phoneErr || '');
+    if (phoneErr) return;
+
     setIsSaving(true);
     setSuccessMsg('');
     setErrorMsg('');
@@ -100,6 +116,47 @@ const MyProfile: React.FC = () => {
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const user = auth.currentUser;
+    if (!user || !user.email) return;
+
+    const newErrors: { [key: string]: string } = {};
+    if (!currentPassword) newErrors.currentPassword = 'Please enter your current password';
+    const newPasswordErr = validatePassword(newPassword);
+    if (newPasswordErr) newErrors.newPassword = newPasswordErr;
+    if (!newErrors.newPassword && newPassword !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+    setPasswordErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
+
+    setIsChangingPassword(true);
+    setPasswordSuccessMsg('');
+    setPasswordErrorMsg('');
+
+    try {
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setIsPasswordModalOpen(false);
+      setPasswordSuccessMsg('Password changed successfully!');
+    } catch (error: any) {
+      console.error('Error changing password:', error);
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        setPasswordErrorMsg('Current password is incorrect.');
+      } else if (error.code === 'auth/requires-recent-login') {
+        setPasswordErrorMsg('This action requires you to log in again. Please log out and back in, then retry.');
+      } else {
+        setPasswordErrorMsg('Failed to change password. Please try again.');
+      }
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -110,18 +167,13 @@ const MyProfile: React.FC = () => {
 
   return (
     <div className="space-y-6 animate-fade-in relative">
-      <div className="bg-white p-8 rounded-[30px] shadow-sm border border-gray-100">
-        <h2 className="text-2xl font-black text-gray-800 flex items-center">
-          <UserCircle className="w-7 h-7 mr-3 text-green-600" /> My Profile
-        </h2>
-        <p className="text-gray-400 text-sm mt-2">Update your personal details and profile photo.</p>
-      </div>
-
-      <div className="bg-white p-8 rounded-[30px] shadow-sm border border-gray-100 max-w-2xl">
+      <div className="bg-white p-8 rounded-[30px] shadow-sm border border-gray-100 max-w-2xl mx-auto">
         {successMsg && <Toast type="success" message={successMsg} onDismiss={() => setSuccessMsg('')} />}
         {errorMsg && <Toast type="error" message={errorMsg} onDismiss={() => setErrorMsg('')} />}
+        {passwordSuccessMsg && <Toast type="success" message={passwordSuccessMsg} onDismiss={() => setPasswordSuccessMsg('')} />}
+        {passwordErrorMsg && <Toast type="error" message={passwordErrorMsg} onDismiss={() => setPasswordErrorMsg('')} />}
 
-        <form onSubmit={handleSave} className="space-y-6">
+        <form onSubmit={handleSave} noValidate className="space-y-6">
           <AvatarUpload value={photoFile} onChange={setPhotoFile} initialUrl={existingPhotoURL} ringColorClass="ring-green-200" />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -139,6 +191,7 @@ const MyProfile: React.FC = () => {
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Phone className="h-5 w-5 text-gray-400" /></div>
                 <input required type="tel" value={userPhoneNum} onChange={(e) => setUserPhoneNum(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all" />
               </div>
+              {phoneError && <p className="text-red-500 text-xs mt-1">{phoneError}</p>}
             </div>
 
             <div>
@@ -187,7 +240,73 @@ const MyProfile: React.FC = () => {
             {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Save Changes'}
           </button>
         </form>
+
+        <button
+          type="button"
+          onClick={() => setIsPasswordModalOpen(true)}
+          className="w-full flex items-center justify-between mt-10 pt-6 border-t border-gray-100 text-left group"
+        >
+          <span className="flex items-center text-sm font-bold text-gray-700">
+            <KeyRound className="w-5 h-5 mr-3 text-green-600" /> Change Password
+          </span>
+          <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-gray-500 transition-colors" />
+        </button>
       </div>
+
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <h2 className="text-lg font-bold text-gray-800 flex items-center">
+                <KeyRound className="w-5 h-5 mr-2 text-green-600" /> Change Password
+              </h2>
+              <button onClick={() => setIsPasswordModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+            </div>
+
+            <form onSubmit={handleChangePassword} noValidate className="p-6 space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Current Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-gray-400" /></div>
+                  <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all" />
+                </div>
+                {passwordErrors.currentPassword && <p className="text-red-500 text-xs mt-1">{passwordErrors.currentPassword}</p>}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">New Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-gray-400" /></div>
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all" />
+                </div>
+                {passwordErrors.newPassword ? (
+                  <p className="text-red-500 text-xs mt-1">{passwordErrors.newPassword}</p>
+                ) : (
+                  <p className="text-gray-400 text-xs mt-1">At least 8 chars with uppercase, lowercase, number & symbol.</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Confirm New Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock className="h-5 w-5 text-gray-400" /></div>
+                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all" />
+                </div>
+                {passwordErrors.confirmPassword && <p className="text-red-500 text-xs mt-1">{passwordErrors.confirmPassword}</p>}
+              </div>
+
+              <div className="pt-2 flex justify-end gap-3">
+                <button type="button" onClick={() => setIsPasswordModalOpen(false)} className="px-5 py-2.5 rounded-lg text-gray-600 font-bold hover:bg-gray-100 transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={isChangingPassword} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-bold transition-colors disabled:bg-green-400 flex items-center">
+                  {isChangingPassword ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Update Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
