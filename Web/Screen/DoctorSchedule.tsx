@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, CalendarDays, Loader2, CheckSquare, ShieldBan, CalendarRange, ChevronLeft, ChevronRight, AlertTriangle, UserCheck, UserX } from 'lucide-react';
-import { collection, query, where, getDocs, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { User, CalendarDays, Loader2, CheckSquare, ShieldBan, CalendarRange, ChevronLeft, ChevronRight, AlertTriangle, UserCheck, UserX, XCircle, X, AlertCircle } from 'lucide-react';
+import { collection, query, where, getDocs, onSnapshot, doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
+import { sendNotification } from '../notifications';
 
 // The Appointment schema is actually written by the mobile app (clinic_appointment_screen.dart):
 // customerID / adminID / appointmentDate ('yyyy-MM-dd') / appointmentTime ('hh:mm AM/PM') / remark / status
@@ -18,6 +19,7 @@ interface RawAppointment {
   appointmentTime: string;
   remark: string;
   status: string; // 'Upcoming' | 'Arrived' | 'Overdue' | 'Absent' | 'Completed' | 'Cancelled'
+  cancelReason?: string;
 }
 
 interface RawBlockTime {
@@ -39,6 +41,7 @@ interface TimelineItem {
   patientName?: string;
   status?: string;
   remark?: string;
+  cancelReason?: string;
   blockType?: string;
   reason?: string;
 }
@@ -155,6 +158,7 @@ const DoctorSchedule: React.FC = () => {
         appointmentTime: d.data().appointmentTime || '',
         remark: d.data().remark || '',
         status: d.data().status || 'Upcoming',
+        cancelReason: d.data().cancelReason || '',
       }));
       setAppointments(fetchedAppointments);
       setIsLoading(false);
@@ -206,6 +210,44 @@ const DoctorSchedule: React.FC = () => {
   const handleMarkAbsent = (id: string) => applyStatusChange(id, 'Absent');
   const handleMarkComplete = (id: string) => applyStatusChange(id, 'Completed');
 
+  const [cancelTarget, setCancelTarget] = useState<TimelineItem | null>(null);
+  const [cancelReasonInput, setCancelReasonInput] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  const openCancelModal = (item: TimelineItem) => {
+    setCancelTarget(item);
+    setCancelReasonInput('');
+  };
+
+  const confirmCancel = async () => {
+    if (!cancelTarget || !cancelReasonInput.trim()) return;
+    setIsCancelling(true);
+    try {
+      await updateDoc(doc(db, 'Appointment', cancelTarget.id), {
+        status: 'Cancelled',
+        cancelReason: cancelReasonInput.trim(),
+        cancelledBy: 'Doctor',
+        cancelledAt: serverTimestamp(),
+      });
+      const cancelledAppt = appointments.find(a => a.id === cancelTarget.id);
+      if (cancelledAppt) {
+        sendNotification({
+          uids: [cancelledAppt.customerID],
+          title: 'Appointment Cancelled',
+          body: `Your appointment on ${cancelledAppt.appointmentDate} at ${cancelledAppt.appointmentTime} was cancelled: ${cancelReasonInput.trim()}`,
+          data: { appointmentId: cancelTarget.id },
+        });
+      }
+      setAppointments(prev => prev.map(a => (a.id === cancelTarget.id ? { ...a, status: 'Cancelled', cancelReason: cancelReasonInput.trim() } : a)));
+      setCancelTarget(null);
+    } catch (error) {
+      console.error("Error cancelling appointment:", error);
+      alert("Failed to cancel appointment.");
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   // Auto-checks the timeline triggers every minute (as `now` changes):
   // T+15min still Upcoming -> auto Overdue; T+30min (slot fully elapsed) still Overdue -> auto Absent
   useEffect(() => {
@@ -240,6 +282,7 @@ const DoctorSchedule: React.FC = () => {
         patientName: patientNames[a.customerID] || 'Loading...',
         status: a.status,
         remark: a.remark,
+        cancelReason: a.cancelReason,
       }));
 
     const blockItems: TimelineItem[] = blockTimes
@@ -411,11 +454,12 @@ const DoctorSchedule: React.FC = () => {
                   'bg-gray-100 text-gray-500'; // Completed
 
                 return (
-                  <div key={item.id} className={`flex items-center p-6 rounded-[25px] border-2 transition-all duration-300 ${
+                  <div key={item.id} className={`p-6 rounded-[25px] border-2 transition-all duration-300 ${
                     isOverdue ? 'border-red-400 bg-red-50' :
                     isArrived ? 'border-purple-300 bg-purple-50' :
                     isDimmed ? 'border-gray-50 bg-gray-50 opacity-70' : 'border-transparent bg-white shadow-sm hover:border-green-100'
                   }`}>
+                  <div className="flex items-center">
                     <div className="w-32 border-r border-gray-100 mr-8 flex flex-col justify-center">
                       <p className="font-black text-gray-800 text-sm">{item.timeLabel}</p>
                     </div>
@@ -453,12 +497,58 @@ const DoctorSchedule: React.FC = () => {
                             <CheckSquare className="w-4 h-4" /><span>Mark as Complete</span>
                           </button>
                         )}
+                        {(item.status === 'Upcoming' || item.status === 'Overdue') && (
+                          <button onClick={() => openCancelModal(item)} className="p-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg transition-colors" title="Cancel Appointment">
+                            <XCircle className="w-5 h-5" />
+                          </button>
+                        )}
                       </div>
                     </div>
+                  </div>
+                  {item.status === 'Cancelled' && item.cancelReason && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 flex items-start text-sm text-red-600">
+                      <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                      <span><span className="font-bold">Cancellation reason: </span>{item.cancelReason}</span>
+                    </div>
+                  )}
                   </div>
                 );
               })
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Cancellation modal — a reason is required before it can be submitted */}
+      {cancelTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm">
+          <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-md p-8 animate-fade-in">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-gray-800 flex items-center"><XCircle className="mr-2 text-red-600" /> Cancel Appointment</h2>
+              <button onClick={() => setCancelTarget(null)} className="text-gray-400 hover:bg-gray-100 p-2 rounded-full"><X className="w-5 h-5" /></button>
+            </div>
+
+            <p className="text-sm text-gray-500 mb-4">
+              Cancelling <span className="font-bold text-gray-700">{cancelTarget.patientName}</span>'s appointment at {cancelTarget.timeLabel} on {selectedDayDisplay}. The patient will see this reason in their app.
+            </p>
+
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Reason (Required)</label>
+            <textarea
+              required
+              value={cancelReasonInput}
+              onChange={e => setCancelReasonInput(e.target.value)}
+              rows={3}
+              placeholder="e.g., Doctor is unavailable due to an emergency"
+              className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-200 resize-none"
+            />
+
+            <button
+              onClick={confirmCancel}
+              disabled={!cancelReasonInput.trim() || isCancelling}
+              className="w-full mt-4 py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-md transition-colors disabled:opacity-50"
+            >
+              {isCancelling ? 'Cancelling...' : 'Confirm Cancellation'}
+            </button>
           </div>
         </div>
       )}

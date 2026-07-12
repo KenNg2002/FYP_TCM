@@ -233,7 +233,7 @@ const AdminLogin: React.FC = () => {
                 type="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => setEmail(e.target.value.toLowerCase())}
                 className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all duration-200"
                 placeholder="staff@tcm.com"
               />
@@ -315,7 +315,7 @@ const AdminLogin: React.FC = () => {
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Email Address</label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Mail className="h-5 w-5 text-gray-400" /></div>
-                    <input type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all" />
+                    <input type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value.toLowerCase())} className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-xl text-sm focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none transition-all" />
                   </div>
                   {resetErrors.resetEmail && <p className="text-red-500 text-xs mt-1">{resetErrors.resetEmail}</p>}
                 </div>

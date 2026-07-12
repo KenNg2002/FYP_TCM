@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, AlertTriangle, CheckCircle, X, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Edit, Trash2, AlertTriangle, CheckCircle, X, Loader2, Leaf, Camera } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../firebaseConfig';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../firebaseConfig';
+
+const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 interface Product {
   productID: string;
@@ -9,8 +12,10 @@ interface Product {
   description: string;
   price: number;
   stockQuantity: number;
+  unit?: string;
   category: string;
   taskStatus: string;
+  photoURL?: string | null;
 }
 
 const HerbalProducts: React.FC = () => {
@@ -29,12 +34,40 @@ const HerbalProducts: React.FC = () => {
     description: '',
     price: '',
     stockQuantity: '',
+    unit: 'pcs',
     category: 'Herbal Tea',
     taskStatus: 'Active',
   });
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('All Categories');
+
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [existingPhotoURL, setExistingPhotoURL] = useState<string | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState('');
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!photoFile) {
+      setPhotoPreview(existingPhotoURL);
+      return;
+    }
+    const url = URL.createObjectURL(photoFile);
+    setPhotoPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [photoFile, existingPhotoURL]);
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file && !ALLOWED_PHOTO_TYPES.includes(file.type)) {
+      setPhotoError('Unsupported format. Please upload a JPG, PNG or WEBP image.');
+      e.target.value = '';
+      return;
+    }
+    setPhotoError('');
+    setPhotoFile(file);
+  };
 
   // Real-time listener: checkout deducts stockQuantity, and the open Admin page needs to reflect
   // stock changes immediately without a manual refresh
@@ -59,24 +92,40 @@ const HerbalProducts: React.FC = () => {
     e.preventDefault();
     setIsLoading(true);
 
+    const isUnlimited = formData.unit === 'unlimited';
     const productPayload = {
       productName: formData.productName,
       description: formData.description,
       price: parseFloat(formData.price),
-      stockQuantity: parseInt(formData.stockQuantity, 10),
+      // Stock isn't tracked for "always available" items — the field is unused downstream
+      stockQuantity: isUnlimited ? 0 : parseInt(formData.stockQuantity, 10),
+      unit: formData.unit,
       category: formData.category,
       taskStatus: formData.taskStatus,
     };
 
     try {
       if (editingId) {
-        await updateDoc(doc(db, 'HerbalProduct', editingId), productPayload);
+        let photoURL = existingPhotoURL;
+        if (photoFile) {
+          const photoRef = ref(storage, `product_photos/${editingId}.jpg`);
+          await uploadBytes(photoRef, photoFile);
+          photoURL = await getDownloadURL(photoRef);
+        }
+        await updateDoc(doc(db, 'HerbalProduct', editingId), { ...productPayload, photoURL });
       } else {
         // On create, write the new doc first, then back-fill its own ID as productID
+        // (and, if a photo was picked, upload it under that same ID and attach the URL)
         const docRef = await addDoc(collection(db, 'HerbalProduct'), productPayload);
-        await updateDoc(docRef, { productID: docRef.id });
+        let photoURL: string | null = null;
+        if (photoFile) {
+          const photoRef = ref(storage, `product_photos/${docRef.id}.jpg`);
+          await uploadBytes(photoRef, photoFile);
+          photoURL = await getDownloadURL(photoRef);
+        }
+        await updateDoc(docRef, { productID: docRef.id, photoURL });
       }
-      
+
       closeModal();
       setIsLoading(false);
     } catch (error) {
@@ -102,7 +151,10 @@ const HerbalProducts: React.FC = () => {
 
   const openNewModal = () => {
     setEditingId(null);
-    setFormData({ productName: '', description: '', price: '', stockQuantity: '', category: 'Herbal Tea', taskStatus: 'Active' });
+    setFormData({ productName: '', description: '', price: '', stockQuantity: '', unit: 'pcs', category: 'Herbal Tea', taskStatus: 'Active' });
+    setPhotoFile(null);
+    setExistingPhotoURL(null);
+    setPhotoError('');
     setIsModalOpen(true);
   };
 
@@ -113,9 +165,13 @@ const HerbalProducts: React.FC = () => {
       description: product.description,
       price: product.price.toString(),
       stockQuantity: product.stockQuantity.toString(),
+      unit: product.unit || 'pcs',
       category: product.category,
       taskStatus: product.taskStatus || 'Active',
     });
+    setPhotoFile(null);
+    setExistingPhotoURL(product.photoURL || null);
+    setPhotoError('');
     setIsModalOpen(true);
   };
 
@@ -148,7 +204,6 @@ const HerbalProducts: React.FC = () => {
             <option>Herbal Tea</option>
             <option>Raw Herbs</option>
             <option>Supplements</option>
-            <option>Equipment</option>
           </select>
         </div>
 
@@ -191,16 +246,31 @@ const HerbalProducts: React.FC = () => {
                 filteredProducts.map((item) => (
                   <tr key={item.productID} className="border-b hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="font-bold text-gray-900">{item.productName}</p>
-                      <p className="text-xs text-gray-400 font-mono mt-1">ID: {item.productID}</p>
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden shrink-0">
+                          {item.photoURL ? (
+                            <img src={item.photoURL} alt={item.productName} className="w-full h-full object-cover" />
+                          ) : (
+                            <Leaf className="w-5 h-5 text-gray-300" />
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-bold text-gray-900">{item.productName}</p>
+                          <p className="text-xs text-gray-400 font-mono mt-1">ID: {item.productID}</p>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4 font-medium text-gray-600">{item.category}</td>
                     <td className="px-6 py-4 font-bold text-gray-900">{item.price.toFixed(2)}</td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-gray-700">{item.stockQuantity}</span>
-                        <StockBadge quantity={item.stockQuantity} />
-                      </div>
+                      {item.unit === 'unlimited' ? (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-50 text-purple-600">Always Available</span>
+                      ) : (
+                        <div className="flex items-center space-x-2">
+                          <span className="font-bold text-gray-700">{item.stockQuantity} {item.unit || 'pcs'}</span>
+                          <StockBadge quantity={item.stockQuantity} />
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${item.taskStatus === 'Active' ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>
@@ -227,8 +297,8 @@ const HerbalProducts: React.FC = () => {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm">
-          <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-2xl p-8 animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-[24px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8 animate-fade-in">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-gray-800">
                 {editingId ? 'Edit Product' : 'Add New Product'}
@@ -239,6 +309,32 @@ const HerbalProducts: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveProduct} className="space-y-5">
+              <div className="flex flex-col items-center">
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  className="relative w-24 h-24 rounded-2xl bg-gray-50 border-4 border-white shadow-md ring-2 ring-green-200 flex items-center justify-center overflow-hidden group"
+                >
+                  {photoPreview ? (
+                    <img src={photoPreview} alt="Product preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <Leaf className="w-10 h-10 text-gray-300" />
+                  )}
+                  <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Camera className="w-6 h-6 text-white" />
+                  </span>
+                </button>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+                <span className="text-xs text-gray-400 mt-2">Click to upload product photo (optional)</span>
+                {photoError && <span className="text-xs text-red-500 mt-1">{photoError}</span>}
+              </div>
+
               <div className="grid grid-cols-2 gap-5">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Product Name</label>
@@ -250,7 +346,6 @@ const HerbalProducts: React.FC = () => {
                     <option>Herbal Tea</option>
                     <option>Raw Herbs</option>
                     <option>Supplements</option>
-                    <option>Equipment</option>
                   </select>
                 </div>
                 <div>
@@ -258,9 +353,22 @@ const HerbalProducts: React.FC = () => {
                   <input required type="number" step="0.01" min="0" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none" />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Stock Quantity</label>
-                  <input required type="number" min="0" value={formData.stockQuantity} onChange={e => setFormData({...formData, stockQuantity: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none" />
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Sold By</label>
+                  <select value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none">
+                    <option value="pcs">Piece (pcs)</option>
+                    <option value="unlimited">No Tracking (Always Available)</option>
+                  </select>
                 </div>
+                {formData.unit === 'unlimited' ? (
+                  <div className="flex items-end">
+                    <p className="text-xs text-gray-400 pb-3">This product won't show a stock count and can always be ordered.</p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Stock (pieces)</label>
+                    <input required type="number" min="0" value={formData.stockQuantity} onChange={e => setFormData({...formData, stockQuantity: e.target.value})} className="w-full p-3 bg-gray-50 border border-transparent rounded-xl focus:bg-white focus:border-green-500 focus:ring-2 focus:ring-green-200 outline-none" />
+                  </div>
+                )}
               </div>
 
               <div>

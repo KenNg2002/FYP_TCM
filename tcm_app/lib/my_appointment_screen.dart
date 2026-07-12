@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'notification_service.dart';
 
 class MyAppointmentsScreen extends StatefulWidget {
   const MyAppointmentsScreen({super.key});
@@ -39,7 +40,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
     return name;
   }
 
-  Future<void> _cancelAppointment(String appointmentId) async {
+  Future<void> _cancelAppointment(String appointmentId, Map<String, dynamic> apt) async {
     bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -57,6 +58,17 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
 
     try {
       await FirebaseFirestore.instance.collection('Appointment').doc(appointmentId).update({'status': 'Cancelled'});
+
+      final adminID = apt['adminID'] ?? '';
+      if (adminID.isNotEmpty) {
+        NotificationService.instance.send(
+          uids: [adminID],
+          title: 'Appointment Cancelled',
+          body: 'A patient cancelled their appointment on ${apt['appointmentDate']} at ${apt['appointmentTime']}.',
+          data: {'appointmentId': appointmentId},
+        );
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Appointment cancelled.'), backgroundColor: Colors.grey));
       }
@@ -202,7 +214,7 @@ class _MyAppointmentsScreenState extends State<MyAppointmentsScreen> {
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton(
-                          onPressed: () => _cancelAppointment(doc.id),
+                          onPressed: () => _cancelAppointment(doc.id, apt),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.red,
                             side: const BorderSide(color: Colors.red),

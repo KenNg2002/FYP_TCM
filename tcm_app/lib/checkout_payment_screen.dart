@@ -437,7 +437,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
                       return ListTile(
                         leading: Container(width: 50, height: 50, decoration: BoxDecoration(color: primaryGreen.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(Icons.eco, color: primaryGreen)),
                         title: Text(item['productName'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        subtitle: Text("Quantity: ${item['quantity']}", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                        subtitle: Text("Quantity: ${item['quantity']} ${item['unit'] == 'unlimited' || item['unit'] == null ? 'pcs' : item['unit']}", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
                         trailing: Text("RM ${(item['subtotal'] ?? 0.0).toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.bold)),
                       );
                     },

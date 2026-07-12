@@ -1,7 +1,15 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'ipaddress.dart';
+
+class _LowerCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    return newValue.copyWith(text: newValue.text.toLowerCase());
+  }
+}
 
 Future<void> showForgotPasswordSheet(BuildContext context, {required Color primaryColor, String? initialEmail}) {
   return showModalBottomSheet(
@@ -133,6 +141,7 @@ class _ForgotPasswordSheetContentState extends State<_ForgotPasswordSheetContent
         TextField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
+          inputFormatters: [_LowerCaseTextFormatter()],
           decoration: InputDecoration(
             labelText: 'Email Address',
             prefixIcon: const Icon(Icons.email_outlined),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'home_screen.dart';
@@ -6,6 +7,13 @@ import 'rider_main_screen.dart';
 import 'register_screen.dart';
 import 'notification_service.dart';
 import 'forgot_password_sheet.dart';
+
+class _LowerCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    return newValue.copyWith(text: newValue.text.toLowerCase());
+  }
+}
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -152,6 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   label: "Email Address",
                   icon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
+                  inputFormatters: [_LowerCaseTextFormatter()],
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) return 'Email field cannot be empty';
                     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
@@ -233,12 +242,14 @@ class _LoginScreenState extends State<LoginScreen> {
     bool obscureText = false,
     TextInputType keyboardType = TextInputType.text,
     Widget? suffixIcon,
+    List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? validator,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscureText,
+      inputFormatters: inputFormatters,
       validator: validator,
       style: const TextStyle(fontWeight: FontWeight.w500),
       decoration: InputDecoration(

@@ -45,16 +45,18 @@ class _CartCheckoutScreenState extends State<CartCheckoutScreen> {
     }
   }
 
-  Future<void> _updateQuantity(String docId, int currentQty, int stockQuantity, double unitPrice, bool isAdd) async {
-    int newQty = isAdd ? currentQty + 1 : currentQty - 1;
-    if (newQty < 1) return;
-    if (newQty > stockQuantity) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cannot exceed available stock ($stockQuantity).'), backgroundColor: Colors.orange));
+  Future<void> _updateQuantity(String docId, int currentQty, int stockQuantity, double unitPrice, bool isAdd, String unit) async {
+    int step = 1;
+    int newQty = isAdd ? currentQty + step : currentQty - step;
+    if (newQty < step) return;
+    // "unlimited" items aren't stock-tracked, so there's no cap to enforce
+    if (unit != 'unlimited' && newQty > stockQuantity) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Cannot exceed available stock ($stockQuantity $unit).'), backgroundColor: Colors.orange));
       return;
     }
     await FirebaseFirestore.instance.collection('CartItem').doc(docId).update({
       'quantity': newQty,
-      'subtotal': newQty * unitPrice, 
+      'subtotal': newQty * unitPrice,
     });
   }
 
@@ -145,7 +147,10 @@ class _CartCheckoutScreenState extends State<CartCheckoutScreen> {
     int quantity = item['quantity'] ?? 1;
     double subtotal = (item['subtotal'] ?? 0.0).toDouble();
     int stockQuantity = item['stockQuantity'] ?? 0;
-    
+    String unit = item['unit'] ?? 'pcs';
+    // "unlimited" is a stock-tracking mode, not a real unit — display it as plain pieces
+    String displayUnit = unit == 'unlimited' ? 'pcs' : unit;
+
     double unitPrice = quantity > 0 ? (subtotal / quantity) : 0.0;
 
     return Dismissible(
@@ -172,7 +177,7 @@ class _CartCheckoutScreenState extends State<CartCheckoutScreen> {
                 children: [
                   Text(productName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1F2937))),
                   const SizedBox(height: 6),
-                  Text("RM ${unitPrice.toStringAsFixed(2)} / item", style: TextStyle(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w600)),
+                  Text("RM ${unitPrice.toStringAsFixed(2)} / $displayUnit", style: TextStyle(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w600)),
                   const SizedBox(height: 6),
                   Text("Subtotal: RM ${subtotal.toStringAsFixed(2)}", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: primaryGreen)),
                 ],
@@ -182,9 +187,9 @@ class _CartCheckoutScreenState extends State<CartCheckoutScreen> {
               decoration: BoxDecoration(border: Border.all(color: Colors.grey[200]!), borderRadius: BorderRadius.circular(25)),
               child: Row(
                 children: [
-                  IconButton(icon: const Icon(Icons.remove, size: 16), color: Colors.grey[600], constraints: const BoxConstraints(minWidth: 35, minHeight: 35), padding: EdgeInsets.zero, onPressed: () => _updateQuantity(docId, quantity, stockQuantity, unitPrice, false)),
-                  Text('$quantity', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  IconButton(icon: const Icon(Icons.add, size: 16), color: primaryGreen, constraints: const BoxConstraints(minWidth: 35, minHeight: 35), padding: EdgeInsets.zero, onPressed: () => _updateQuantity(docId, quantity, stockQuantity, unitPrice, true)),
+                  IconButton(icon: const Icon(Icons.remove, size: 16), color: Colors.grey[600], constraints: const BoxConstraints(minWidth: 35, minHeight: 35), padding: EdgeInsets.zero, onPressed: () => _updateQuantity(docId, quantity, stockQuantity, unitPrice, false, unit)),
+                  Text('$quantity $displayUnit', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  IconButton(icon: const Icon(Icons.add, size: 16), color: primaryGreen, constraints: const BoxConstraints(minWidth: 35, minHeight: 35), padding: EdgeInsets.zero, onPressed: () => _updateQuantity(docId, quantity, stockQuantity, unitPrice, true, unit)),
                 ],
               ),
             ),

@@ -15,7 +15,7 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
   final Color primaryGreen = const Color(0xFF2E7D32);
   final Color bgGray = const Color(0xFFF4F6F8);
 
-  final List<String> _categories = ["All", "Herbal Tea", "Raw Herbs", "Supplements", "Equipment"];
+  final List<String> _categories = ["All", "Herbal Tea", "Raw Herbs", "Supplements"];
 
   @override
   Widget build(BuildContext context) {
@@ -100,6 +100,7 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
     String name = product['productName'] ?? 'Unknown Product';
     double price = (product['price'] ?? 0).toDouble();
     int stock = product['stockQuantity'] ?? 0;
+    String unit = product['unit'] ?? 'pcs';
     String status = product['taskStatus'] ?? 'Active';
 
     try {
@@ -111,20 +112,24 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
           .limit(1)
           .get();
 
+      int step = 1;
+      bool isUnlimited = unit == 'unlimited';
+
       if (existingItemQuery.docs.isNotEmpty) {
         // Case A: item already in cart - update quantity and subtotal
         var existingDoc = existingItemQuery.docs.first;
         int currentQty = existingDoc['quantity'] ?? 0;
 
         // Anti-oversell guard: don't allow adding more once quantity hits the stock limit
-        if (currentQty >= stock) {
+        // ("unlimited" items skip this check — they aren't stock-tracked)
+        if (!isUnlimited && currentQty + step > stock) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Cannot add more. Only $stock left in stock!'), backgroundColor: Colors.orange)
+            SnackBar(content: Text('Cannot add more. Only $stock $unit left in stock!'), backgroundColor: Colors.orange)
           );
           return;
         }
 
-        int newQty = currentQty + 1;
+        int newQty = currentQty + step;
         await existingDoc.reference.update({
           'quantity': newQty,
           'subtotal': newQty * price,
@@ -132,13 +137,21 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
 
       } else {
         // Case B: item not in cart yet - create a new record
+        if (!isUnlimited && step > stock) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Only $stock $unit left in stock!'), backgroundColor: Colors.orange)
+          );
+          return;
+        }
+
         await FirebaseFirestore.instance.collection('CartItem').add({
           'cartID': cartId,
           'productID': productId,
           'productName': name,
-          'quantity': 1,
-          'subtotal': price,
+          'quantity': step,
+          'subtotal': step * price,
           'stockQuantity': stock,
+          'unit': unit,
           'taskStatus': status,
           'orderID': null, // null means not checked out yet
         });
@@ -291,8 +304,11 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
     double price = (product['price'] ?? 0).toDouble();
     String category = product['category'] ?? 'Uncategorized';
     int stock = product['stockQuantity'] ?? 0;
-    
-    bool isOutOfStock = stock <= 0;
+    String unit = product['unit'] ?? 'pcs';
+    String? photoURL = product['photoURL'];
+
+    // "unlimited" products aren't stock-tracked, so they're never out of stock
+    bool isOutOfStock = unit != 'unlimited' && stock <= 0;
 
     IconData categoryIcon = Icons.eco;
     Color iconBgColor = Colors.green;
@@ -303,9 +319,6 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
     } else if (category == 'Supplements') {
       categoryIcon = Icons.medication;
       iconBgColor = Colors.blue;
-    } else if (category == 'Equipment') {
-      categoryIcon = Icons.hardware;
-      iconBgColor = Colors.grey;
     }
 
     return Container(
@@ -318,14 +331,27 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: isOutOfStock ? Colors.grey[200] : iconBgColor.withOpacity(0.1),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Center(
-                child: Icon(categoryIcon, color: isOutOfStock ? Colors.grey[400] : iconBgColor, size: 50),
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              child: Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: isOutOfStock ? Colors.grey[200] : iconBgColor.withOpacity(0.1),
+                ),
+                child: (photoURL != null && photoURL.isNotEmpty)
+                    ? Opacity(
+                        opacity: isOutOfStock ? 0.5 : 1.0,
+                        child: Image.network(
+                          photoURL,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Center(child: Icon(categoryIcon, color: isOutOfStock ? Colors.grey[400] : iconBgColor, size: 50)),
+                        ),
+                      )
+                    : Center(
+                        child: Icon(categoryIcon, color: isOutOfStock ? Colors.grey[400] : iconBgColor, size: 50),
+                      ),
               ),
             ),
           ),
@@ -360,7 +386,7 @@ class _HerbalStoreScreenState extends State<HerbalStoreScreen> {
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: isOutOfStock ? Colors.grey[400] : primaryGreen),
                         ),
                         Text(
-                          isOutOfStock ? "Out of stock" : "$stock left",
+                          unit == 'unlimited' ? "Always available" : (isOutOfStock ? "Out of stock" : "$stock $unit left"),
                           style: TextStyle(fontSize: 10, color: isOutOfStock ? Colors.redAccent : Colors.grey[500], fontWeight: FontWeight.bold),
                         )
                       ],

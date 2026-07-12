@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'notification_service.dart';
 
 class ClinicAppointmentScreen extends StatefulWidget {
   final Map<String, dynamic> doctor; 
@@ -150,6 +151,7 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
 
     Map<String, List<String>> bookedTimesByDate = {};
     for (var d in _allAppointments) {
+      if ((d['status'] ?? 'Upcoming') == 'Cancelled') continue; // freed-up slot — don't count it as booked
       String date = d['appointmentDate'];
       if (date.compareTo(fromStr) < 0 || date.compareTo(toStr) > 0) continue;
       bookedTimesByDate.putIfAbsent(date, () => []).add(d['appointmentTime']);
@@ -239,9 +241,9 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
       }
     }
 
-    // 3. Times already booked by other patients
+    // 3. Times already booked by other patients (cancelled ones free up the slot again)
     List<String> bookedTimes = _allAppointments
-        .where((d) => d['appointmentDate'] == dateString)
+        .where((d) => d['appointmentDate'] == dateString && (d['status'] ?? 'Upcoming') != 'Cancelled')
         .map((d) => d['appointmentTime'] as String)
         .toList();
 
@@ -308,6 +310,39 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
       String customerId = FirebaseAuth.instance.currentUser?.uid ?? "TEST_PATIENT_01";
       String dateString = DateFormat('yyyy-MM-dd').format(_selectedDate!);
 
+      // One appointment per patient per day, across any doctor — cancelled ones don't count
+      QuerySnapshot sameDayAppointments = await FirebaseFirestore.instance
+          .collection('Appointment')
+          .where('customerID', isEqualTo: customerId)
+          .where('appointmentDate', isEqualTo: dateString)
+          .get();
+
+      bool alreadyBookedThatDay = sameDayAppointments.docs.any((d) {
+        final status = (d.data() as Map<String, dynamic>)['status'] ?? 'Upcoming';
+        return status != 'Cancelled';
+      });
+
+      // Not a hard block — just a confirmation to catch accidental double-booking from a stray tap
+      if (alreadyBookedThatDay) {
+        if (!mounted) return;
+        bool? proceed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Already Have a Booking'),
+            content: const Text('You already have an appointment on this date. Are you sure you want to book another one?'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+              TextButton(onPressed: () => Navigator.pop(context, true), child: Text('Book Anyway', style: TextStyle(color: primaryGreen, fontWeight: FontWeight.bold))),
+            ],
+          ),
+        );
+
+        if (proceed != true) {
+          if (mounted) setState(() => _isConfirming = false);
+          return;
+        }
+      }
+
       DocumentReference apptRef = FirebaseFirestore.instance.collection('Appointment').doc();
       
       await apptRef.set({
@@ -320,6 +355,21 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
         'status': 'Upcoming',
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      String patientName = 'A patient';
+      try {
+        DocumentSnapshot patientSnap = await FirebaseFirestore.instance.collection('User').doc(customerId).get();
+        if (patientSnap.exists) {
+          patientName = (patientSnap.data() as Map<String, dynamic>)['username'] ?? patientName;
+        }
+      } catch (_) {}
+
+      NotificationService.instance.send(
+        uids: [widget.doctor['adminID']],
+        title: 'New Appointment Booked',
+        body: '$patientName booked an appointment on $dateString at $_selectedTimeSlot.',
+        data: {'appointmentId': apptRef.id},
+      );
 
       _showSuccessDialog();
 
@@ -445,10 +495,18 @@ class _ClinicAppointmentScreenState extends State<ClinicAppointmentScreen> {
           firstDate: DateTime.now(),
           lastDate: DateTime.now().add(const Duration(days: 90)), // Bookings open up to ~3 months ahead
           selectableDayPredicate: (DateTime date) {
+            String dateString = DateFormat('yyyy-MM-dd').format(date);
+
+            // Never lock out the date that's already selected/being viewed — if it becomes fully
+            // booked while the picker is open, CalendarDatePicker's initialDate would otherwise
+            // stop satisfying this predicate and crash with a failed assertion.
+            if (_selectedDate != null && dateString == DateFormat('yyyy-MM-dd').format(_selectedDate!)) {
+              return true;
+            }
+
             if (_workingDays.isEmpty) return true;
             String dayOfWeek = DateFormat('EEEE').format(date);
             if (!_workingDays.contains(dayOfWeek)) return false;
-            String dateString = DateFormat('yyyy-MM-dd').format(date);
             return !_fullyBookedDates.contains(dateString);
           },
           onDisplayedMonthChanged: (DateTime newMonth) {

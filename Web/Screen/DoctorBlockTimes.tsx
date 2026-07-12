@@ -19,10 +19,41 @@ const emptyForm = {
   isRecurring: false,
   specificDate: '',
   dayOfWeek: 'Monday',
+  isWholeDay: false,
   startTime: '',
   endTime: '',
   blockType: 'Break',
   reason: ''
+};
+
+// Sentinel start/end time stored for whole-day blocks
+const WHOLE_DAY_START = '00:00';
+const WHOLE_DAY_END = '23:59';
+
+// Sort days in logical week order rather than whatever order Firestore returns them in
+const dayOrder: { [key: string]: number } = {
+  'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6, 'Sunday': 7
+};
+
+// Handles both 24h "HH:MM" (from <input type="time">) and 12h "hh:mm AM/PM" (as stored on Appointment docs)
+const parseTimeToMinutes = (time: string): number => {
+  const ampmMatch = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (ampmMatch) {
+    let h = parseInt(ampmMatch[1], 10);
+    const m = parseInt(ampmMatch[2], 10);
+    const period = ampmMatch[3].toUpperCase();
+    if (period === 'AM' && h === 12) h = 0;
+    if (period === 'PM' && h !== 12) h += 12;
+    return h * 60 + m;
+  }
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+};
+
+const getDayOfWeek = (dateStr: string): string => {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][date.getDay()];
 };
 
 const DoctorBlockTimes: React.FC = () => {
@@ -74,6 +105,7 @@ const DoctorBlockTimes: React.FC = () => {
       isRecurring: block.isRecurring,
       specificDate: block.specificDate || '',
       dayOfWeek: block.dayOfWeek || 'Monday',
+      isWholeDay: block.startTime === WHOLE_DAY_START && block.endTime === WHOLE_DAY_END,
       startTime: block.startTime,
       endTime: block.endTime,
       blockType: block.blockType,
@@ -92,13 +124,38 @@ const DoctorBlockTimes: React.FC = () => {
       isRecurring: form.isRecurring,
       specificDate: form.isRecurring ? null : form.specificDate,
       dayOfWeek: form.isRecurring ? form.dayOfWeek : null,
-      startTime: form.startTime,
-      endTime: form.endTime,
+      startTime: form.isWholeDay ? WHOLE_DAY_START : form.startTime,
+      endTime: form.isWholeDay ? WHOLE_DAY_END : form.endTime,
       blockType: form.blockType,
       reason: form.reason
     };
 
     try {
+      // Don't let a block time swallow up a slot patients have already booked —
+      // the doctor has to cancel those appointments (from Clinic Appointments) first.
+      const blockStartMin = parseTimeToMinutes(payload.startTime);
+      const blockEndMin = parseTimeToMinutes(payload.endTime);
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      const apptSnap = await getDocs(query(collection(db, 'Appointment'), where('adminID', '==', adminID)));
+      const conflicts = apptSnap.docs
+        .map(d => d.data())
+        .filter(a => a.status !== 'Cancelled')
+        .filter(a => payload.isRecurring
+          ? a.appointmentDate >= todayStr && getDayOfWeek(a.appointmentDate) === payload.dayOfWeek
+          : a.appointmentDate === payload.specificDate)
+        .filter(a => {
+          const slotStart = parseTimeToMinutes(a.appointmentTime);
+          const slotEnd = slotStart + 30; // matches the 30-minute booking granularity used for appointments
+          return slotStart < blockEndMin && slotEnd > blockStartMin;
+        });
+
+      if (conflicts.length > 0) {
+        alert(`Cannot block this time — there ${conflicts.length === 1 ? 'is' : 'are'} ${conflicts.length} existing appointment${conflicts.length === 1 ? '' : 's'} in this slot. Please cancel ${conflicts.length === 1 ? 'it' : 'them'} first from Clinic Appointments.`);
+        setIsLoading(false);
+        return;
+      }
+
       if (editingId) {
         await updateDoc(doc(db, 'BlockTime', editingId), payload);
       } else {
@@ -127,7 +184,9 @@ const DoctorBlockTimes: React.FC = () => {
     }
   };
 
-  const recurringBlocks = blockTimes.filter(b => b.isRecurring);
+  const recurringBlocks = blockTimes
+    .filter(b => b.isRecurring)
+    .sort((a, b) => (dayOrder[a.dayOfWeek || ''] || 0) - (dayOrder[b.dayOfWeek || ''] || 0));
   const oneTimeBlocks = blockTimes.filter(b => !b.isRecurring);
   const visibleBlocks = activeTab === 'recurring' ? recurringBlocks : oneTimeBlocks;
 
@@ -179,16 +238,23 @@ const DoctorBlockTimes: React.FC = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Start Time</label>
-                <input required type="time" value={form.startTime} onChange={e => setForm({ ...form, startTime: e.target.value })} className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-200" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">End Time</label>
-                <input required type="time" value={form.endTime} onChange={e => setForm({ ...form, endTime: e.target.value })} className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-200" />
-              </div>
+            <div className="flex items-center p-3 bg-gray-50 rounded-xl border border-gray-100">
+              <input type="checkbox" id="wholeDay" checked={form.isWholeDay} onChange={e => setForm({ ...form, isWholeDay: e.target.checked })} className="w-5 h-5 text-red-600 rounded focus:ring-red-500" />
+              <label htmlFor="wholeDay" className="ml-3 text-sm font-bold text-gray-700 cursor-pointer">Block the whole day</label>
             </div>
+
+            {!form.isWholeDay && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Start Time</label>
+                  <input required type="time" value={form.startTime} onChange={e => setForm({ ...form, startTime: e.target.value })} className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-200" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-2">End Time</label>
+                  <input required type="time" value={form.endTime} onChange={e => setForm({ ...form, endTime: e.target.value })} className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-200" />
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Block Type</label>
@@ -253,7 +319,8 @@ const DoctorBlockTimes: React.FC = () => {
                           </span>
                         )}
                         <span className="flex items-center text-gray-600 font-bold text-xs">
-                          <Clock className="w-3 h-3 mr-1.5 text-gray-400" /> {block.startTime} - {block.endTime}
+                          <Clock className="w-3 h-3 mr-1.5 text-gray-400" />
+                          {block.startTime === WHOLE_DAY_START && block.endTime === WHOLE_DAY_END ? 'Whole Day' : `${block.startTime} - ${block.endTime}`}
                         </span>
                       </div>
                     </div>

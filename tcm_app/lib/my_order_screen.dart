@@ -92,7 +92,9 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     if (items.isEmpty) return "No items";
     return items.map((i) {
       final data = i.data() as Map<String, dynamic>;
-      return "${data['productName'] ?? 'Item'} x${data['quantity'] ?? 1}";
+      final unit = data['unit'];
+      final showUnit = unit != null && unit != 'pcs' && unit != 'unlimited';
+      return "${data['productName'] ?? 'Item'} x${data['quantity'] ?? 1}${showUnit ? ' $unit' : ''}";
     }).join(", ");
   }
 

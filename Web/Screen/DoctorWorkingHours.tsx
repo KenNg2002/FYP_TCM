@@ -18,8 +18,8 @@ const dayOrder: { [key: string]: number } = {
 
 const emptyForm = {
   dayOfWeek: 'Monday',
-  startTime: '09:00',
-  endTime: '17:00'
+  startTime: '08:00',
+  endTime: '18:00'
 };
 
 const DoctorWorkingHours: React.FC = () => {

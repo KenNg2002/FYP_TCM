@@ -8,9 +8,12 @@ interface AvatarUploadProps {
   initialUrl?: string | null;
 }
 
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
 const AvatarUpload: React.FC<AvatarUploadProps> = ({ value, onChange, ringColorClass = 'ring-blue-200', initialUrl = null }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(initialUrl);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!value) {
@@ -22,6 +25,17 @@ const AvatarUpload: React.FC<AvatarUploadProps> = ({ value, onChange, ringColorC
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [value, initialUrl]);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    if (file && !ALLOWED_TYPES.includes(file.type)) {
+      setError('Unsupported format. Please upload a JPG, PNG or WEBP image (HEIC from iPhone is not supported).');
+      e.target.value = '';
+      return;
+    }
+    setError(null);
+    onChange(file);
+  };
 
   return (
     <div className="flex flex-col items-center">
@@ -42,11 +56,12 @@ const AvatarUpload: React.FC<AvatarUploadProps> = ({ value, onChange, ringColorC
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
-        onChange={(e) => onChange(e.target.files?.[0] || null)}
+        accept="image/jpeg,image/png,image/webp"
+        onChange={handleFileChange}
         className="hidden"
       />
       <span className="text-xs text-gray-400 mt-2">Click to upload photo (optional)</span>
+      {error && <span className="text-xs text-red-500 mt-1 text-center max-w-[200px]">{error}</span>}
     </div>
   );
 };

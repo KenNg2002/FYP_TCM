@@ -76,6 +76,56 @@ class _DoctorListScreenState extends State<DoctorListScreen> {
     }
   }
 
+  void _showDoctorProfile(Map<String, dynamic> doctor) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            Center(
+              child: CircleAvatar(
+                radius: 50,
+                backgroundColor: primaryGreen.withOpacity(0.1),
+                backgroundImage: (doctor["photoURL"] != null && (doctor["photoURL"] as String).isNotEmpty)
+                    ? NetworkImage(doctor["photoURL"])
+                    : null,
+                child: (doctor["photoURL"] == null || (doctor["photoURL"] as String).isEmpty)
+                    ? Icon(doctor["image"], color: primaryGreen, size: 50)
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Center(
+              child: Text(doctor["name"], style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+            ),
+            const SizedBox(height: 4),
+            Center(
+              child: Text(doctor["specialty"], style: TextStyle(color: primaryGreen, fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+            const SizedBox(height: 24),
+            Text("ABOUT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[500], letterSpacing: 0.5)),
+            const SizedBox(height: 8),
+            Text(doctor["description"], style: TextStyle(color: Colors.grey[700], fontSize: 14, height: 1.5)),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -107,7 +157,9 @@ class _DoctorListScreenState extends State<DoctorListScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
+                          GestureDetector(
+                            onTap: () => _showDoctorProfile(doctor),
+                            child: Row(
                             children: [
                               CircleAvatar(
                                 radius: 30,
@@ -130,6 +182,7 @@ class _DoctorListScreenState extends State<DoctorListScreen> {
                                 ),
                               ),
                             ],
+                            ),
                           ),
                           const SizedBox(height: 12),
                           Text(

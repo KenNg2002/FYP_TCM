@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { auth } from '../firebaseConfig';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../firebaseConfig';
 import { registerWebPushToken } from '../notifications';
 
 import ClinicAppointments from './ClinicAppointments';
+import AllAppointments from './AllAppointments';
 import HerbalProducts from './HerbalProducts';
 import OrdersDelivery from './OrdersDelivery';
 import DiagnosisReview from './DiagnosisReview';
@@ -30,6 +32,7 @@ const menuConfig: { name: string; icon: any; roles: Array<'Admin' | 'Doctor'> }[
   { name: 'Diagnosis Review', icon: Search, roles: ['Doctor'] },
   { name: 'My Schedule', icon: CalendarDays, roles: ['Doctor'] },
   { name: 'Clinic Appointments', icon: CalendarCheck, roles: ['Doctor'] },
+  { name: 'All Appointments', icon: CalendarCheck, roles: ['Admin'] },
   { name: 'Herbal Products', icon: Leaf, roles: ['Admin'] },
   { name: 'Orders & Delivery', icon: ShoppingCart, roles: ['Admin'] },
   { name: 'Register Admin', icon: ShieldCheck, roles: ['Admin'] },
@@ -45,10 +48,23 @@ const AdminDashboard: React.FC = () => {
   const menuItems = menuConfig.filter((item) => item.roles.includes(adminRole));
 
   const [activeMenu, setActiveMenu] = useState(menuItems[0]?.name ?? 'Dashboard');
+  const [photoURL, setPhotoURL] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     registerWebPushToken();
+  }, []);
+
+  useEffect(() => {
+    const fetchAvatar = async () => {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+      const userSnap = await getDoc(doc(db, 'User', uid));
+      if (userSnap.exists()) {
+        setPhotoURL(userSnap.data().photoURL || null);
+      }
+    };
+    fetchAvatar();
   }, []);
 
   const handleLogout = async () => {
@@ -110,7 +126,13 @@ const AdminDashboard: React.FC = () => {
         <header className="h-20 bg-white shadow-sm flex items-center justify-between px-8">
           <h1 className="text-2xl font-bold text-gray-800">{activeMenu} Overview</h1>
           <div className="flex items-center space-x-6">
-            <div className="w-10 h-10 bg-green-700 text-white rounded-full flex items-center justify-center font-bold">A</div>
+            <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden">
+              {photoURL ? (
+                <img src={photoURL} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <UserCircle className="w-7 h-7 text-gray-400" />
+              )}
+            </div>
           </div>
         </header>
 
@@ -139,6 +161,7 @@ const AdminDashboard: React.FC = () => {
           {activeMenu === 'Herbal Products' && <HerbalProducts />}
           {activeMenu === 'Orders & Delivery' && <OrdersDelivery />}
           {activeMenu === 'Clinic Appointments' && <ClinicAppointments />}
+          {activeMenu === 'All Appointments' && <AllAppointments />}
           {activeMenu === 'Register Admin' && <RegisterAdmin />}
           {activeMenu === 'Register Doctor' && <RegisterDoctor />}
           {activeMenu === 'Register Delivery Man' && <RegisterDeliveryMan />}

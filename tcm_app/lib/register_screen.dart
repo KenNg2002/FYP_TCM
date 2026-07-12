@@ -1,9 +1,17 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+
+class _LowerCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    return newValue.copyWith(text: newValue.text.toLowerCase());
+  }
+}
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -22,6 +30,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _confirmPasswordController = TextEditingController();
 
   bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
   // bool _agreeToTerms = false;
   bool _isLoading = false;
 
@@ -132,13 +141,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: Image.asset('assets/icon/logo.png', width: 72, height: 72),
-                  ),
-                ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 const Text("Create Account", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF212121))),
                 const SizedBox(height: 8),
                 Text("Join us to balance your lifestyle", style: TextStyle(fontSize: 16, color: Colors.grey[600])),
@@ -196,6 +199,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   label: "Email Address",
                   icon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
+                  inputFormatters: [_LowerCaseTextFormatter()],
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) return 'Please enter your email';
                     final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
@@ -224,6 +228,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   label: "Password",
                   icon: Icons.lock_outline,
                   obscureText: !_isPasswordVisible,
+                  suffixIcon: IconButton(
+                    icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off, color: Colors.grey[500]),
+                    onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                  ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Please enter a password';
                     if (value.length < 8) return 'Password must be at least 8 characters long';
@@ -249,7 +257,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   controller: _confirmPasswordController,
                   label: "Confirm Password",
                   icon: Icons.lock_clock_outlined,
-                  obscureText: !_isPasswordVisible,
+                  obscureText: !_isConfirmPasswordVisible,
+                  suffixIcon: IconButton(
+                    icon: Icon(_isConfirmPasswordVisible ? Icons.visibility : Icons.visibility_off, color: Colors.grey[500]),
+                    onPressed: () => setState(() => _isConfirmPasswordVisible = !_isConfirmPasswordVisible),
+                  ),
                   validator: (value) {
                     if (value == null || value.isEmpty) return 'Please confirm your password';
                     if (value != _passwordController.text) return 'Passwords do not match';
@@ -300,18 +312,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
     required IconData icon,
     bool obscureText = false,
     TextInputType keyboardType = TextInputType.text,
+    List<TextInputFormatter>? inputFormatters,
+    Widget? suffixIcon,
     String? Function(String?)? validator,
   }) {
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
       obscureText: obscureText,
+      inputFormatters: inputFormatters,
       validator: validator,
       style: const TextStyle(fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         hintText: label,
         hintStyle: TextStyle(color: Colors.grey[400]),
         prefixIcon: Icon(icon, color: Colors.grey[500]),
+        suffixIcon: suffixIcon,
         fillColor: bgGray,
         filled: true,
         contentPadding: const EdgeInsets.symmetric(vertical: 18),
